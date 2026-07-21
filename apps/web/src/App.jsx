@@ -6,6 +6,7 @@ import {
   Layers3, LogOut, Menu, PackageCheck, Plus, RefreshCcw, Scale, Search,
   Settings, ShieldCheck, Store, Tractor, UserCog, Users, Warehouse, X,
 } from 'lucide-react';
+import Phase2Page, { PHASE2_TITLES } from './Phase2Pages.jsx';
 
 const DEFAULT_API_URL = window.location.hostname === 'genit-web-production.up.railway.app'
   ? 'https://genit-api-production.up.railway.app'
@@ -26,14 +27,19 @@ const navGroups = [
     { id: 'users', label: 'Përdoruesit', icon: Users, active: true, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN'] },
     { id: 'audit', label: 'Audit Log', icon: ShieldCheck, active: true, roles: ['SUPER_ADMIN', 'COMPANY_ADMIN', 'AUDITOR'] },
   ]},
+  { title: 'Regjistra — Faza 2', items: [
+    { id: 'products', label: 'Artikujt', icon: Archive, active: true },
+    { id: 'suppliers', label: 'Furnitorët', icon: Users, active: true },
+    { id: 'customers', label: 'Klientët', icon: UserCog, active: true },
+  ]},
   { title: 'Blerje & Peshim — Faza 2', items: [
-    { label: 'Formulari i Peshave', icon: Scale }, { label: 'Kërkesa për Ofertë', icon: ClipboardList },
-    { label: 'Porosi Blerjeje', icon: FileSpreadsheet }, { label: 'Pranime', icon: PackageCheck },
-    { label: 'Fatura Blerjeje', icon: Archive },
+    { id: 'weights', label: 'Formulari i Peshave', icon: Scale, active: true }, { id: 'purchaseRfq', label: 'Kërkesa për Ofertë', icon: ClipboardList, active: true },
+    { id: 'purchaseOrders', label: 'Porosi Blerjeje', icon: FileSpreadsheet, active: true }, { id: 'purchaseReceipts', label: 'Pranime', icon: PackageCheck, active: true },
+    { id: 'purchaseInvoices', label: 'Fatura Blerjeje', icon: Archive, active: true },
   ]},
   { title: 'Shitje & Magazinë — Faza 2', items: [
-    { label: 'Oferta & Porosi', icon: Store }, { label: 'Fletë-Dalje', icon: Boxes },
-    { label: 'Fatura Shitjeje', icon: CircleDollarSign }, { label: 'Stoku', icon: Layers3 },
+    { id: 'salesQuotes', label: 'Oferta Shitjeje', icon: Store, active: true }, { id: 'salesOrders', label: 'Porosi Shitjeje', icon: ClipboardList, active: true },
+    { id: 'deliveryNotes', label: 'Fletë-Dalje', icon: Boxes, active: true }, { id: 'salesInvoices', label: 'Fatura Shitjeje', icon: CircleDollarSign, active: true }, { id: 'stock', label: 'Stoku', icon: Layers3, active: true },
   ]},
   { title: 'Gjurmueshmëri — Faza 3', items: [
     { label: 'Ferma & Origjina', icon: Tractor }, { label: 'Lote', icon: PackageCheck },
@@ -170,7 +176,7 @@ function Dashboard({ refreshKey }) {
     ['Kompani', data.companies, Building2], ['Magazina', data.warehouses, Warehouse],
     ['Përdorues aktivë', data.activeUsers, Users], ['Veprime sot', data.actionsToday, Activity],
   ] : [];
-  return <><Alert>{error}</Alert><div className="hero-card"><div><p className="eyebrow">FAZA 1 • CLOUD CORE</p><h2>Platforma qendrore është aktive</h2><p>Ky version vendos identitetin, kompanitë, magazinat, rolet, izolimin e të dhënave dhe auditimin. Modulet e dokumenteve migrohen në fazat pasuese.</p></div><div className="hero-symbol"><Layers3 /></div></div><div className="kpi-grid">{!data ? <Spinner /> : cards.map(([label, value, Icon]) => <article className="kpi" key={label}><div className="kpi-icon"><Icon /></div><span>{label}</span><strong>{value}</strong></article>)}</div><section className="card"><div className="section-heading"><div><h3>Statusi i migrimit</h3><p>Versioni HTML 6.4 ruhet në dosjen <code>legacy/</code> si referencë funksionale.</p></div><span className="status-chip">{data?.phase || 'Cloud Core'}</span></div><div className="phase-list"><div className="phase done"><CheckCircle2 /><span><strong>Faza 1</strong> Login, multi-company, magazina, përdorues, audit, real-time</span></div><div className="phase"><span className="phase-no">2</span><span><strong>Faza 2</strong> Peshim, blerje, shitje dhe stok me transaksione PostgreSQL</span></div><div className="phase"><span className="phase-no">3</span><span><strong>Faza 3</strong> Gjurmueshmëri, Arka, Banka dhe raportet e formatuara</span></div></div></section></>;
+  return <><Alert>{error}</Alert><div className="hero-card"><div><p className="eyebrow">FAZA 2 • OPERACIONET ERP</p><h2>Platforma qendrore është aktive</h2><p>Platforma online tani përfshin regjistrat, peshimin, blerjet, shitjet dhe stokun me transaksione PostgreSQL.</p></div><div className="hero-symbol"><Layers3 /></div></div><div className="kpi-grid">{!data ? <Spinner /> : cards.map(([label, value, Icon]) => <article className="kpi" key={label}><div className="kpi-icon"><Icon /></div><span>{label}</span><strong>{value}</strong></article>)}</div><section className="card"><div className="section-heading"><div><h3>Statusi i migrimit</h3><p>Versioni HTML 6.4 ruhet në dosjen <code>legacy/</code> si referencë funksionale.</p></div><span className="status-chip">{data?.phase || 'Cloud Core'}</span></div><div className="phase-list"><div className="phase done"><CheckCircle2 /><span><strong>Faza 1</strong> Login, multi-company, magazina, përdorues, audit, real-time</span></div><div className="phase"><span className="phase-no">2</span><span><strong>Faza 2</strong> Peshim, blerje, shitje dhe stok me transaksione PostgreSQL</span></div><div className="phase"><span className="phase-no">3</span><span><strong>Faza 3</strong> Gjurmueshmëri, Arka, Banka dhe raportet e formatuara</span></div></div></section></>;
 }
 
 function Companies({ user, refreshKey, notify }) {
@@ -212,12 +218,12 @@ function AuditLog({ refreshKey }) {
 }
 
 function Sidebar({ page, setPage, open, close, user }) {
-  return <aside className={`sidebar ${open ? 'open' : ''}`}><div className="sidebar-brand"><div className="brand-mark small"><Layers3 /></div><div><strong>Sistemi Genit</strong><span>Cloud ERP</span></div><button className="sidebar-close" onClick={close}><X /></button></div><nav>{navGroups.map((group) => <section className="nav-group" key={group.title}><h4>{group.title}</h4>{group.items.map((item) => { const Icon = item.icon; const enabled = item.active === true && (!item.roles || item.roles.includes(user.role)); return <button key={item.id || item.label} className={`nav-item ${page === item.id ? 'active' : ''} ${!enabled ? 'disabled' : ''}`} onClick={() => { if (enabled) { setPage(item.id); close(); } }} disabled={!enabled}><Icon size={18} /><span>{item.label}</span>{!enabled && <small>më pas</small>}</button>; })}</section>)}</nav><div className="sidebar-footer"><Settings size={16} /><span>Versioni Cloud Core 1.0</span></div></aside>;
+  return <aside className={`sidebar ${open ? 'open' : ''}`}><div className="sidebar-brand"><div className="brand-mark small"><Layers3 /></div><div><strong>Sistemi Genit</strong><span>Cloud ERP</span></div><button className="sidebar-close" onClick={close}><X /></button></div><nav>{navGroups.map((group) => <section className="nav-group" key={group.title}><h4>{group.title}</h4>{group.items.map((item) => { const Icon = item.icon; const enabled = item.active === true && (!item.roles || item.roles.includes(user.role)); return <button key={item.id || item.label} className={`nav-item ${page === item.id ? 'active' : ''} ${!enabled ? 'disabled' : ''}`} onClick={() => { if (enabled) { setPage(item.id); close(); } }} disabled={!enabled}><Icon size={18} /><span>{item.label}</span>{!enabled && <small>më pas</small>}</button>; })}</section>)}</nav><div className="sidebar-footer"><Settings size={16} /><span>Versioni Cloud ERP 2.0</span></div></aside>;
 }
 
 function AppShell({ user, onLogout }) {
   const [page, setPage] = useState('dashboard'); const [menuOpen, setMenuOpen] = useState(false); const [refreshKey, setRefreshKey] = useState(0); const [live, setLive] = useState(false); const [toast, setToast] = useState('');
-  const titles = { dashboard: ['Dashboard', 'Pamja e përgjithshme e platformës Cloud'], companies: ['Kompanitë', 'Multi-company me izolim të të dhënave'], warehouses: ['Magazinat', 'Akses dhe strukturë sipas kompanive'], users: ['Përdoruesit', 'Role dhe leje individuale'], audit: ['Audit Log', 'Historik i pandryshueshëm i veprimeve'] };
+  const titles = { ...PHASE2_TITLES, dashboard: ['Dashboard', 'Pamja e përgjithshme e platformës Cloud'], companies: ['Kompanitë', 'Multi-company me izolim të të dhënave'], warehouses: ['Magazinat', 'Akses dhe strukturë sipas kompanive'], users: ['Përdoruesit', 'Role dhe leje individuale'], audit: ['Audit Log', 'Historik i pandryshueshëm i veprimeve'] };
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 2600); };
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY); if (!token) return undefined;
@@ -231,6 +237,7 @@ function AppShell({ user, onLogout }) {
     if (page === 'warehouses') return <Warehouses user={user} refreshKey={refreshKey} notify={notify} />;
     if (page === 'users') return <UsersPage currentUser={user} refreshKey={refreshKey} notify={notify} />;
     if (page === 'audit') return <AuditLog refreshKey={refreshKey} />;
+    if (PHASE2_TITLES[page]) return <Phase2Page page={page} />;
     return <Dashboard refreshKey={refreshKey} />;
   }, [page, refreshKey, user]);
   return <div className="app-shell"><Sidebar page={page} setPage={setPage} open={menuOpen} close={() => setMenuOpen(false)} user={user} />{menuOpen && <button className="sidebar-overlay" onClick={() => setMenuOpen(false)} aria-label="Mbyll menunë" />}<main className="main"><Header title={titles[page][0]} subtitle={titles[page][1]} user={user} onMenu={() => setMenuOpen(true)} onLogout={onLogout} live={live} /><div className="content">{content}</div></main>{toast && <div className="toast"><CheckCircle2 /> {toast}</div>}</div>;
