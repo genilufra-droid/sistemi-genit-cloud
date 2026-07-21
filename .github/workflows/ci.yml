@@ -12,6 +12,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          registry-url: https://registry.npmjs.org
           cache-dependency-path: |
             apps/api/package-lock.json
             apps/web/package-lock.json
