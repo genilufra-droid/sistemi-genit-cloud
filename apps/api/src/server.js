@@ -10,6 +10,8 @@ import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { Server as SocketIOServer } from 'socket.io';
 import { z } from 'zod';
+import { installPhase2Routes, migratePhase2 } from './phase2.js';
+import { installPhase2DocumentRoutes, migratePhase2Documents } from './phase2-documents.js';
 
 const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
@@ -127,6 +129,8 @@ async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_audit_tenant_created ON audit_logs(tenant_id, created_at DESC);
     `);
+    await migratePhase2(client);
+    await migratePhase2Documents(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -597,12 +601,15 @@ app.get('/api/audit', authRequired, requireRoles('SUPER_ADMIN', 'COMPANY_ADMIN',
 app.get('/api/modules', authRequired, (_req, res) => {
   res.json([
     { group: 'Cloud Core', phase: 1, active: true, items: ['Dashboard', 'Kompanitë', 'Magazinat', 'Përdoruesit', 'Audit Log'] },
-    { group: 'Blerje & Peshim', phase: 2, active: false, items: ['Formulari i Peshave', 'Kërkesa për Ofertë', 'Porosi Blerjeje', 'Pranime', 'Fatura Blerjeje'] },
-    { group: 'Shitje & Magazinë', phase: 2, active: false, items: ['Oferta', 'Porosi Shitjeje', 'Fletë-Dalje', 'Fatura Shitjeje', 'Stoku'] },
+    { group: 'Blerje & Peshim', phase: 2, active: true, items: ['Formulari i Peshave', 'Kërkesa për Ofertë', 'Porosi Blerjeje', 'Pranime', 'Fatura Blerjeje'] },
+    { group: 'Shitje & Magazinë', phase: 2, active: true, items: ['Oferta', 'Porosi Shitjeje', 'Fletë-Dalje', 'Fatura Shitjeje', 'Stoku'] },
     { group: 'Gjurmueshmëri', phase: 3, active: false, items: ['Ferma & Origjina', 'Lote', 'Proces & Paketim', 'Kontroll Cilësie', 'Recall'] },
     { group: 'Arka & Banka', phase: 3, active: false, items: ['Mandat Arkëtimi', 'Mandat Pagese', 'Ditari i Arkës', 'Posta e Bankës', 'Rakordimi', 'Raportet'] },
   ]);
 });
+
+installPhase2Routes({ app, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
+installPhase2DocumentRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
 
 app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: `Rruga ${req.method} ${req.path} nuk ekziston.` }));
 app.use((error, _req, res, _next) => {
