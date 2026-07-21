@@ -1,0 +1,13 @@
+{
+  "name": "sistemi-genit-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspace apps/api && npm install --workspace apps/web",
+    "check": "npm run check --workspace apps/api && npm run build --workspace apps/web"
+  }
+}
