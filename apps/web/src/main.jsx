@@ -2,6 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
+import './export.css';
+import { installFetchTimeout, installGlobalExportButtons } from './exportTools.js';
+
+installFetchTimeout(15000);
 
 function cleanProductionUi() {
   const groupNames = new Map([
@@ -28,13 +32,13 @@ function cleanProductionUi() {
   if (heroDescription) heroDescription.remove();
 
   document.querySelectorAll('.card .section-heading h3').forEach((heading) => {
-    if (heading.textContent.trim() === 'Statusi i migrimit') {
-      heading.closest('.card')?.remove();
-    }
+    if (heading.textContent.trim() === 'Statusi i migrimit') heading.closest('.card')?.remove();
   });
 
   const footer = document.querySelector('.sidebar-footer span');
   if (footer) footer.textContent = 'Sistemi Genit Cloud';
+
+  installGlobalExportButtons(document);
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
