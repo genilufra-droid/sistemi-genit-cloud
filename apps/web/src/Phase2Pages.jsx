@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Archive, CheckCircle2, Plus, RefreshCcw, Search, X } from 'lucide-react';
 import './phase2.css';
+import { ProductsRegistryPage, PartnersRegistryPage } from './RegistryPages.jsx';
 
 const DEFAULT_API_URL = window.location.hostname === 'genit-web-production.up.railway.app'
   ? 'https://genit-api-production.up.railway.app'
@@ -37,9 +38,9 @@ export const PHASE2_TITLES = {
 };
 
 export default function Phase2Page({ page }) {
-  if(page==='products') return <ProductsPage/>;
-  if(page==='suppliers') return <PartnersPage type="SUPPLIER"/>;
-  if(page==='customers') return <PartnersPage type="CUSTOMER"/>;
+  if(page==='products') return <ProductsRegistryPage/>;
+  if(page==='suppliers') return <PartnersRegistryPage type="SUPPLIER"/>;
+  if(page==='customers') return <PartnersRegistryPage type="CUSTOMER"/>;
   if(page==='weights') return <WeightsPage/>;
   if(page==='stock') return <StockPage/>;
   const map={
