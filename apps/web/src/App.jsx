@@ -7,7 +7,10 @@ import {
   Settings, ShieldCheck, Store, Tractor, UserCog, Users, Warehouse, X,
 } from 'lucide-react';
 
-const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+const DEFAULT_API_URL = window.location.hostname === 'genit-web-production.up.railway.app'
+  ? 'https://genit-api-production.up.railway.app'
+  : 'http://localhost:3000';
+const API_URL = String(window.__SG_API_URL__ || import.meta.env.VITE_API_URL || DEFAULT_API_URL).replace(/\/$/, '');
 const TOKEN_KEY = 'sg_cloud_token';
 const ROLE_LABELS = {
   SUPER_ADMIN: 'Super Administrator', COMPANY_ADMIN: 'Administrator Kompanie', MANAGER: 'Menaxher',
