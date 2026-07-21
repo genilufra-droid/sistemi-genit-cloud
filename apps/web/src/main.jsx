@@ -5,10 +5,14 @@ import './styles.css';
 import './export.css';
 import './safeEnhancements.css';
 import { installSafeEnhancements } from './safeEnhancements.js';
+import { installLogicalActions } from './logicalActions.js';
 
 const rootElement = document.getElementById('root');
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode><App /></React.StrictMode>,
 );
 
-window.requestAnimationFrame(installSafeEnhancements);
+window.requestAnimationFrame(() => {
+  installSafeEnhancements();
+  installLogicalActions();
+});
