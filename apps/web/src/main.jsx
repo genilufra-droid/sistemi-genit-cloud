@@ -6,6 +6,7 @@ import './export.css';
 import './safeEnhancements.css';
 import { installSafeEnhancements } from './safeEnhancements.js';
 import { installLogicalActions } from './logicalActions.js';
+import { installDomSafety } from './domSafety.js';
 
 const rootElement = document.getElementById('root');
 ReactDOM.createRoot(rootElement).render(
@@ -15,4 +16,5 @@ ReactDOM.createRoot(rootElement).render(
 window.requestAnimationFrame(() => {
   installSafeEnhancements();
   installLogicalActions();
+  installDomSafety();
 });
