@@ -17,24 +17,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: odoo-traceability-actions
-      - name: Extract exact traceability ranges
+      - name: Extract export APIs
         run: |
           node <<'NODE'
-          const fs = require('fs');
-          const lines = fs.readFileSync('apps/web/index.html','utf8').split(/\r?\n/);
-          function writeRange(path,start,end){
-            const out=[];
-            for(let i=start-1;i<Math.min(end,lines.length);i++) out.push(`${i+1}: ${lines[i]}`);
-            fs.writeFileSync(path,out.join('\n'));
+          const fs=require('fs');
+          const lines=fs.readFileSync('apps/web/index.html','utf8').split(/\r?\n/);
+          const terms=['PDFEngine','exportPDF','toPDF','downloadPDF','printHtml','printDocument','XLSX.writeFile','writeFile(','exportTrace','pdfFrom','openPrint'];
+          const out=[];
+          for(const term of terms){
+            out.push(`\n===== ${term} =====`);
+            let n=0;
+            for(let i=0;i<lines.length;i++){
+              if(!lines[i].includes(term)) continue;
+              n++;
+              out.push(`--- ${n} @ ${i+1} ---`);
+              for(let j=Math.max(0,i-8);j<Math.min(lines.length,i+20);j++) out.push(`${j+1}: ${lines[j]}`);
+              if(n>=10) break;
+            }
+            if(!n) out.push('NO MATCH');
           }
           fs.mkdirSync('docs',{recursive:true});
-          writeRange('docs/traceability-core-range.txt',2907,3375);
-          writeRange('docs/traceability-ui-range.txt',7418,7505);
+          fs.writeFileSync('docs/export-api-snippets.txt',out.join('\n'));
           NODE
       - name: Commit report
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/traceability-core-range.txt docs/traceability-ui-range.txt
-          git commit -m 'Extract exact traceability core and UI ranges'
+          git add docs/export-api-snippets.txt
+          git commit -m 'Inspect print PDF and Excel APIs'
           git push origin odoo-traceability-actions
