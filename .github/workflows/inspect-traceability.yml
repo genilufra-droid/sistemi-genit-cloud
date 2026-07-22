@@ -1,4 +1,4 @@
-name: Fix sales API binding
+name: Remove temporary traceability diagnostics
 
 on:
   push:
@@ -10,30 +10,30 @@ permissions:
   contents: write
 
 jobs:
-  fix:
+  cleanup:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: odoo-traceability-actions
-      - name: Bind demo to real sales services
+      - name: Remove temporary files
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-          p = Path('apps/web/odoo-traceability-actions.js')
-          s = p.read_text()
-          old = "if (typeof S.saveSale === 'function' && typeof S.registerSale === 'function') { await S.saveSale(invoice); await S.registerSale(DEMO.saleId); }"
-          new = "if (typeof S.saveSalesInvoice === 'function' && typeof S.registerSale === 'function') { await S.saveSalesInvoice(invoice); await S.registerSale(DEMO.saleId); }"
-          if old not in s:
-              raise SystemExit('Expected sales binding not found')
-          p.write_text(s.replace(old, new, 1))
-          PY
-          node --check apps/web/odoo-traceability-actions.js
-      - name: Commit correction
+          rm -f \
+            .github/workflows/inspect-traceability.yml \
+            docs/auth-startup-snippets.txt \
+            docs/export-api-snippets.txt \
+            docs/odoo-traceability-test-report.txt \
+            docs/sales-service-api.txt \
+            docs/traceability-core-range.txt \
+            docs/traceability-functions.txt \
+            docs/traceability-services.txt \
+            docs/traceability-source-snippets.txt \
+            docs/traceability-ui-range.txt
+      - name: Commit cleanup
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/web/odoo-traceability-actions.js
-          git commit -m 'Bind Gjethe Ferre scenario to real sales API'
+          git add -A
+          git commit -m 'Remove temporary traceability diagnostics'
           git push origin odoo-traceability-actions
