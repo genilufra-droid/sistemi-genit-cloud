@@ -1,18 +1,31 @@
 'use strict';
 const { chromium } = require('playwright');
+const capturedErrors = [];
+let diagnosticPage = null;
 
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });
   const page = await context.newPage();
-  const errors = [];
+  diagnosticPage = page;
+  const errors = capturedErrors;
   page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
   page.on('console', m => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
   page.on('dialog', async d => { await d.accept(); });
 
   await page.goto(process.env.TEST_URL || 'http://127.0.0.1:4173', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForTimeout(2500);
+  console.log('STARTUP=' + JSON.stringify(await page.evaluate(() => {
+    const describe = id => {
+      const el = document.getElementById(id);
+      return el ? { exists: true, display: getComputedStyle(el).display, visibility: getComputedStyle(el).visibility, rects: el.getClientRects().length, html: el.outerHTML.slice(0, 500) } : { exists: false };
+    };
+    return { firstAdmin: describe('first-admin-form'), login: describe('login-form'), authRoot: describe('auth-root'), appShell: describe('app-shell'), hasAuth: Boolean(window.Auth), hasApp: Boolean(window.App), hasDB: Boolean(window.DB), readyState: document.readyState };
+  })));
+  if (errors.length) console.log('STARTUP_ERRORS=' + JSON.stringify(errors));
+
   await page.waitForFunction(() => {
-    const visible = el => el && getComputedStyle(el).display !== 'none' && el.getClientRects().length;
+    const visible = el => el && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden' && el.getClientRects().length;
     return visible(document.querySelector('#first-admin-form')) || visible(document.querySelector('#login-form')) || visible(document.querySelector('#app-shell'));
   }, null, { timeout: 30000 });
 
@@ -53,14 +66,7 @@ const { chromium } = require('playwright');
     const moves = (await DB.getAll('lotMovements')).filter(x => x.lotId === ids.lotId);
     const inputs = await DB.getByIndex('processBatchInputs', 'batchId', ids.batchId);
     const product = await DB.get('products', lot.productId);
-    return {
-      lot, sale, batch, moves, inputs, product,
-      actions: {
-        open: typeof App.openLotOdoo === 'function', edit: typeof App.editManualLot === 'function',
-        remove: typeof App.deleteManualLot === 'function', print: typeof App.printLotOdoo === 'function',
-        pdf: typeof App.exportLotOdooPDF === 'function', excel: typeof App.exportLotOdooExcel === 'function'
-      }
-    };
+    return { lot, sale, batch, moves, inputs, product, actions: { open: typeof App.openLotOdoo === 'function', edit: typeof App.editManualLot === 'function', remove: typeof App.deleteManualLot === 'function', print: typeof App.printLotOdoo === 'function', pdf: typeof App.exportLotOdooPDF === 'function', excel: typeof App.exportLotOdooExcel === 'function' } };
   }, ids);
 
   if (!state.lot || state.lot.quantityCreated !== 200 || state.lot.quantityAvailable !== 150 || state.lot.quantityConsumed !== 50) throw new Error('Bilanci i lotit nuk është 200 / 50 / 150 kg.');
@@ -100,4 +106,11 @@ const { chromium } = require('playwright');
   if (errors.length) throw new Error(errors.join('\n'));
   console.log(JSON.stringify({ result: 'TEST_SUCCESS', lot: '200 kg', sold: '50 kg', balance: '150 kg', workOrder: '100 -> 92 kg', ids }, null, 2));
   await browser.close();
-})().catch(error => { console.error(error.stack || error.message || error); process.exit(1); });
+})().catch(async error => {
+  console.error(error.stack || error.message || error);
+  if (capturedErrors.length) console.error('CAPTURED_ERRORS=' + JSON.stringify(capturedErrors));
+  if (diagnosticPage) {
+    try { console.error('FINAL_DOM=' + JSON.stringify(await diagnosticPage.evaluate(() => ({ bodyText: document.body.innerText.slice(0, 1200), authRoot: document.getElementById('auth-root') && document.getElementById('auth-root').outerHTML.slice(0, 1500), appStyle: document.getElementById('app-shell') && document.getElementById('app-shell').getAttribute('style') })))); } catch (_) {}
+  }
+  process.exit(1);
+});
