@@ -71,6 +71,8 @@ let diagnosticPage = null;
     return { lot, sale, batch, moves, inputs, product, actions: { open: typeof App.openLotOdoo === 'function', edit: typeof App.editManualLot === 'function', remove: typeof App.deleteManualLot === 'function', print: typeof App.printLotOdoo === 'function', pdf: typeof App.exportLotOdooPDF === 'function', excel: typeof App.exportLotOdooExcel === 'function' } };
   }, ids);
 
+  console.log('SCENARIO_STATE=' + JSON.stringify(state));
+
   if (!state.lot || state.lot.quantityCreated !== 200 || state.lot.quantityAvailable !== 150 || state.lot.quantityConsumed !== 50) throw new Error('Bilanci i lotit nuk është 200 / 50 / 150 kg.');
   if (!state.sale || state.sale.status !== 'POSTED') throw new Error('Fatura demo nuk është POSTED.');
   if (!state.moves.some(m => m.movementType === 'SALE_OUT' && Number(m.quantity) === -50 && Number(m.balanceAfter) === 150)) throw new Error('Lëvizja SALE_OUT -50 / balance 150 mungon.');
