@@ -1,4 +1,4 @@
-name: Diagnose final Odoo traceability run
+name: Fix and verify Odoo traceability synchronization
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  fix-test:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -24,9 +24,24 @@ jobs:
           ref: odoo-traceability-actions
           fetch-depth: 0
 
-      - name: Validate and build
+      - name: Synchronize scenario data after posting
         run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/odoo-traceability-actions.js')
+          s = p.read_text()
+          old = "await App.refreshAll(); var resultLot = await DB.get('lots', lot.id);"
+          new = "await App.refreshAll(); App.data.lots = await DB.getAll('lots'); App.data.lotMovements = await DB.getAll('lotMovements'); App.data.processBatches = await DB.getAll('processBatches'); App.data.processBatchInputs = await DB.getAll('processBatchInputs'); App.data.salesInvoices = await DB.getAll('salesInvoices'); App.data.products = await DB.getAll('products'); var resultLot = await DB.get('lots', lot.id);"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit('Scenario synchronization anchor not found')
+          p.write_text(s)
+          PY
           node --check apps/web/odoo-traceability-actions.js
+
+      - name: Patch and build HTML
+        run: |
           node --check scripts/patch-odoo-traceability.cjs
           node --check tests/traceability-odoo-smoke.cjs
           node scripts/patch-odoo-traceability.cjs
@@ -47,7 +62,7 @@ jobs:
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Execute isolated browser scenario
+      - name: Execute Gjethe Ferre browser scenario
         id: scenario
         continue-on-error: true
         run: |
@@ -70,15 +85,22 @@ jobs:
           cat docs/final-odoo-traceability-diagnostic.txt
           exit $test_status
 
-      - name: Save isolated diagnostic
-        if: always()
+      - name: Commit passing source and HTML
+        if: steps.scenario.outcome == 'success'
+        run: |
+          rm -f docs/final-odoo-traceability-diagnostic.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/odoo-traceability-actions.js apps/web/index.html docs/final-odoo-traceability-diagnostic.txt
+          git commit -m 'Synchronize and verify Odoo traceability scenario' || exit 0
+          git push origin odoo-traceability-actions
+
+      - name: Save failing diagnostic
+        if: steps.scenario.outcome != 'success'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/final-odoo-traceability-diagnostic.txt
-          git commit -m 'Record isolated Odoo traceability diagnostic' || exit 0
+          git commit -m 'Record failed Odoo traceability synchronization test' || exit 0
           git push origin odoo-traceability-actions
-
-      - name: Enforce isolated result
-        if: steps.scenario.outcome != 'success'
-        run: exit 1
+          exit 1
