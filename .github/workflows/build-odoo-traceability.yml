@@ -1,0 +1,64 @@
+name: Build and test Odoo traceability
+
+on:
+  push:
+    branches: [odoo-traceability-actions]
+    paths:
+      - 'apps/web/index.html'
+      - 'apps/web/package.json'
+      - 'apps/web/odoo-traceability-actions.js'
+      - 'apps/web/odoo-traceability-actions.css'
+      - 'scripts/patch-odoo-traceability.cjs'
+      - 'tests/traceability-odoo-smoke.cjs'
+      - '.github/workflows/build-odoo-traceability.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Validate source and production build
+        run: |
+          echo "Testing commit $(git rev-parse HEAD)"
+          node --check apps/web/odoo-traceability-actions.js
+          node --check scripts/patch-odoo-traceability.cjs
+          node --check tests/traceability-odoo-smoke.cjs
+          grep -q 'patch-odoo-traceability.cjs' apps/web/package.json
+          grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
+          grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
+          cd apps/web
+          npm ci
+          npm run build
+          cmp index.html dist/index.html
+          grep -q 'SG_ODOO_TRACEABILITY_ACTIONS_START' dist/index.html
+          grep -q 'sg-demo-trace-btn' dist/index.html
+          grep -q 'sg-new-work-order-btn' dist/index.html
+          grep -q 'App.data.lotMovements = await DB.getAll' dist/index.html
+
+      - name: Install browser runtime
+        run: |
+          mkdir -p /tmp/sg-odoo-test
+          cd /tmp/sg-odoo-test
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Verify Gjethe Ferre end-to-end scenario
+        run: |
+          cd apps/web
+          npm run start > /tmp/sg-web.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true; cat /tmp/sg-web.log || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
+            sleep 1
+          done
+          cd ../..
+          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs
