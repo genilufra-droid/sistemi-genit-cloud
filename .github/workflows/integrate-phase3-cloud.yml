@@ -1,0 +1,108 @@
+name: Integrate and test Phase 3 Cloud Core
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - '.github/workflows/integrate-phase3-cloud.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_test
+      JWT_SECRET: phase3-cloud-core-test-secret-minimum-32-characters-2026
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
+
+      - name: Wire Phase 3 module into server
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('apps/api/src/server.js')
+          s = p.read_text()
+          import_line = "import { installPhase3CloudCoreRoutes, migratePhase3CloudCore } from './phase3-cloud-core.js';"
+          anchor = "import { installPhase2DocumentRoutes, migratePhase2Documents } from './phase2-documents.js';"
+          if import_line not in s:
+              if anchor not in s:
+                  raise SystemExit('Import anchor missing')
+              s = s.replace(anchor, anchor + "\n" + import_line, 1)
+          migration = '    await migratePhase3CloudCore(client);'
+          migration_anchor = '    await migratePhase2Documents(client);'
+          if migration not in s:
+              if migration_anchor not in s:
+                  raise SystemExit('Migration anchor missing')
+              s = s.replace(migration_anchor, migration_anchor + "\n" + migration, 1)
+          route = "installPhase3CloudCoreRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });"
+          route_anchor = "installPhase2DocumentRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });"
+          if route not in s:
+              if route_anchor not in s:
+                  raise SystemExit('Route anchor missing')
+              s = s.replace(route_anchor, route_anchor + "\n" + route, 1)
+          p.write_text(s)
+          PY
+          node --check apps/api/src/server.js
+          node --check apps/api/src/phase3-cloud-core.js
+
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Start API and test PostgreSQL Cloud Core
+        run: |
+          cd apps/api
+          node src/server.js > /tmp/genit-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill $api_pid || true; cat /tmp/genit-api.log || true' EXIT
+          for attempt in $(seq 1 45); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:3000/api/health | tee /tmp/health.json
+          curl --fail --silent http://127.0.0.1:3000/api/setup/status | tee /tmp/setup-status.json
+          node -e "const x=require('/tmp/setup-status.json');if(x.needsSetup!==true)process.exit(1)"
+          curl --fail --silent -X POST http://127.0.0.1:3000/api/setup/admin \
+            -H 'Content-Type: application/json' \
+            --data '{"organizationName":"Genit Test","companyName":"Kompania Test","companyNipt":"L12345678A","warehouseName":"Magazina Qendrore","adminName":"Administrator Test","username":"admin_test","email":"admin@example.com","password":"AdminTest123"}' \
+            | tee /tmp/setup.json
+          TOKEN=$(node -e "const x=require('/tmp/setup.json');if(!x.token)process.exit(1);process.stdout.write(x.token)")
+          curl --fail --silent http://127.0.0.1:3000/api/cloud/capabilities -H "Authorization: Bearer $TOKEN" | tee /tmp/capabilities.json
+          node -e "const x=require('/tmp/capabilities.json');if(x.mode!=='CLOUD_POSTGRESQL'||x.sourceOfTruth!=='POSTGRESQL'||!x.multiUser)process.exit(1)"
+          curl --fail --silent http://127.0.0.1:3000/api/cloud/bootstrap -H "Authorization: Bearer $TOKEN" | tee /tmp/bootstrap.json
+          node -e "const x=require('/tmp/bootstrap.json');if(!x.user||x.companies.length!==1||x.warehouses.length!==1||x.access.companyIds.length!==1)process.exit(1)"
+          curl --fail --silent http://127.0.0.1:3000/api/setup/status | tee /tmp/setup-status-after.json
+          node -e "const x=require('/tmp/setup-status-after.json');if(x.needsSetup!==false)process.exit(1)"
+
+      - name: Commit integrated server and remove one-shot workflow
+        run: |
+          rm -f .github/workflows/integrate-phase3-cloud.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/server.js .github/workflows/integrate-phase3-cloud.yml
+          git commit -m 'Wire and verify Phase 3 PostgreSQL Cloud Core'
+          git push origin HEAD:cloud-erp-phase3-online-core
