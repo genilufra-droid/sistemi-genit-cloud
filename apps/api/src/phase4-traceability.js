@@ -346,14 +346,16 @@ async function nextLotNumber(client, tenantId, companyId, product, lotType, sour
   const prefixMap = { RAW: 'RAW', PROCESSED: 'PRC', PACKAGED: 'PKG', RETURN: 'RTN' };
   const prefix = prefixMap[lotType] || 'LOT';
   const productToken = normalizeToken(product.code || product.name, 'ART').slice(0, 18);
-  const day = String(sourceDate || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+  const dateText = sourceDate instanceof Date ? sourceDate.toISOString().slice(0, 10) : String(sourceDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const day = dateText.replace(/-/g, '');
   const key = `${prefix}-${productToken}-${day}`;
   const value = await nextSequence(client, tenantId, companyId, key);
   return `${key}-${String(value).padStart(4, '0')}`;
 }
 
 async function nextReceiptNo(client, tenantId, companyId, documentDate) {
-  const year = String(documentDate || new Date().toISOString().slice(0, 10)).slice(0, 4);
+  const dateText = documentDate instanceof Date ? documentDate.toISOString().slice(0, 10) : String(documentDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const year = dateText.slice(0, 4);
   const key = `FH-${year}`;
   const value = await nextSequence(client, tenantId, companyId, key);
   return `FH-${year}-${String(value).padStart(6, '0')}`;
