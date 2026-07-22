@@ -1,0 +1,121 @@
+name: Verify Phase 3 production deployment
+
+on:
+  push:
+    branches: [verify-phase3-production]
+    paths:
+      - '.github/workflows/verify-phase3-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      WEB_URL: https://genit-web-production.up.railway.app/
+      EXPECTED_COMMIT: 14165789188bf58ea479acba89ab37c2a63c61a5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify-phase3-production
+          fetch-depth: 0
+
+      - name: Wait for Railway and verify live Cloud configuration
+        id: production
+        continue-on-error: true
+        run: |
+          mkdir -p docs /tmp/phase3-production
+          set +e
+          (
+            set -euxo pipefail
+            success=0
+            for attempt in $(seq 1 60); do
+              cache="phase3-${EXPECTED_COMMIT}-${attempt}-$(date +%s)"
+              if curl --fail --silent --show-error --location --max-time 30 \
+                -H 'Cache-Control: no-cache' \
+                "${WEB_URL}?v=${cache}" \
+                -o /tmp/phase3-production/live.html; then
+                if grep -q 'SG_CLOUD_ERP_ADAPTER_START' /tmp/phase3-production/live.html && \
+                   grep -q 'cloud-first-admin-form' /tmp/phase3-production/live.html; then
+                  success=1
+                  break
+                fi
+              fi
+              sleep 10
+            done
+            test "$success" = "1"
+            wc -c /tmp/phase3-production/live.html
+            sha256sum /tmp/phase3-production/live.html
+            node <<'NODE'
+            const fs = require('fs');
+            const html = fs.readFileSync('/tmp/phase3-production/live.html', 'utf8');
+            const match = html.match(/window\.__GENIT_CLOUD_CONFIG__=(\{[^<]+\});<\/script>/);
+            if (!match) throw new Error('Konfigurimi Cloud mungon nga HTML-ja live.');
+            const config = JSON.parse(match[1]);
+            if (!config.apiUrl) throw new Error('VITE_API_URL është bosh në deploy-in live.');
+            if (config.required !== true) throw new Error('GENIT_CLOUD_REQUIRED nuk është true në deploy-in live.');
+            fs.writeFileSync('/tmp/phase3-production/config.json', JSON.stringify(config, null, 2));
+            fs.writeFileSync('/tmp/phase3-production/api-url.txt', config.apiUrl.replace(/\/+$/, ''));
+            NODE
+            API_URL=$(cat /tmp/phase3-production/api-url.txt)
+            curl --fail --silent --show-error --max-time 30 "$API_URL/api/health" -o /tmp/phase3-production/health.json
+            curl --fail --silent --show-error --max-time 30 "$API_URL/api/setup/status" -o /tmp/phase3-production/setup-status.json
+            node <<'NODE'
+            const fs = require('fs');
+            const health = JSON.parse(fs.readFileSync('/tmp/phase3-production/health.json', 'utf8'));
+            const setup = JSON.parse(fs.readFileSync('/tmp/phase3-production/setup-status.json', 'utf8'));
+            if (health.status !== 'ok') throw new Error('API health nuk është ok.');
+            if (typeof setup.needsSetup !== 'boolean') throw new Error('API setup/status nuk ktheu needsSetup boolean.');
+            NODE
+            code=$(curl --silent --output /tmp/phase3-production/cors.txt --write-out '%{http_code}' --max-time 30 -X OPTIONS "$API_URL/api/setup/status" \
+              -H 'Origin: https://genit-web-production.up.railway.app' \
+              -H 'Access-Control-Request-Method: GET')
+            test "$code" = "204" -o "$code" = "200"
+            cat > docs/phase3-production-verification.json <<EOF
+            {
+              "result": "PRODUCTION_SUCCESS",
+              "verifiedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "webUrl": "$WEB_URL",
+              "apiUrl": "$API_URL",
+              "expectedCommit": "$EXPECTED_COMMIT",
+              "htmlBytes": $(wc -c < /tmp/phase3-production/live.html),
+              "htmlSha256": "$(sha256sum /tmp/phase3-production/live.html | cut -d' ' -f1)",
+              "cloudRequired": true,
+              "setupStatus": $(cat /tmp/phase3-production/setup-status.json),
+              "health": $(cat /tmp/phase3-production/health.json)
+            }
+            EOF
+          ) > /tmp/phase3-production/verify.log 2>&1
+          status=$?
+          if [ "$status" != "0" ]; then
+            cat > docs/phase3-production-verification.json <<EOF
+            {
+              "result": "PRODUCTION_FAILED",
+              "verifiedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "webUrl": "$WEB_URL",
+              "expectedCommit": "$EXPECTED_COMMIT",
+              "message": "Shih phase3-production-verification.log"
+            }
+            EOF
+          fi
+          cp /tmp/phase3-production/verify.log docs/phase3-production-verification.log
+          cat docs/phase3-production-verification.log
+          cat docs/phase3-production-verification.json
+          exit $status
+
+      - name: Commit production report and remove one-shot workflow
+        if: always()
+        run: |
+          rm -f .github/workflows/verify-phase3-production.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/phase3-production-verification.json docs/phase3-production-verification.log .github/workflows/verify-phase3-production.yml
+          git commit -m 'Record Phase 3 production deployment verification' || exit 0
+          git push origin HEAD:verify-phase3-production
+
+      - name: Enforce production result
+        if: steps.production.outcome != 'success'
+        run: exit 1
