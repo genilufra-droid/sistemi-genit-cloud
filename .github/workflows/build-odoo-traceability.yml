@@ -1,18 +1,22 @@
-name: Commit verified Odoo traceability files
+name: Build and test Odoo traceability
 
 on:
   push:
     branches: [odoo-traceability-actions]
     paths:
+      - 'apps/web/index.html'
+      - 'apps/web/package.json'
+      - 'apps/web/odoo-traceability-actions.js'
+      - 'apps/web/odoo-traceability-actions.css'
+      - 'scripts/patch-odoo-traceability.cjs'
+      - 'tests/traceability-odoo-smoke.cjs'
       - '.github/workflows/build-odoo-traceability.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  finalize-files:
-    if: github.actor != 'github-actions[bot]'
+  build-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,35 +24,25 @@ jobs:
           ref: odoo-traceability-actions
           fetch-depth: 0
 
-      - name: Apply verified synchronization
+      - name: Validate source and production build command
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-          p = Path('apps/web/odoo-traceability-actions.js')
-          s = p.read_text()
-          old = "await App.refreshAll(); var resultLot = await DB.get('lots', lot.id);"
-          new = "await App.refreshAll(); App.data.lots = await DB.getAll('lots'); App.data.lotMovements = await DB.getAll('lotMovements'); App.data.processBatches = await DB.getAll('processBatches'); App.data.processBatchInputs = await DB.getAll('processBatchInputs'); App.data.salesInvoices = await DB.getAll('salesInvoices'); App.data.products = await DB.getAll('products'); var resultLot = await DB.get('lots', lot.id);"
-          if old in s:
-              s = s.replace(old, new, 1)
-          elif new not in s:
-              raise SystemExit('Scenario synchronization anchor not found')
-          p.write_text(s)
-          PY
-          rm -f docs/final-odoo-traceability-diagnostic.txt
           node --check apps/web/odoo-traceability-actions.js
+          node --check scripts/patch-odoo-traceability.cjs
           node --check tests/traceability-odoo-smoke.cjs
+          grep -q 'patch-odoo-traceability.cjs' apps/web/package.json
+          grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
+          grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
 
-      - name: Generate final HTML
+      - name: Build production HTML
+        working-directory: apps/web
         run: |
-          node scripts/patch-odoo-traceability.cjs
-          first=$(sha256sum apps/web/index.html | cut -d' ' -f1)
-          node scripts/patch-odoo-traceability.cjs
-          second=$(sha256sum apps/web/index.html | cut -d' ' -f1)
-          test "$first" = "$second"
-          cd apps/web
           npm ci
           npm run build
           cmp index.html dist/index.html
+          grep -q 'SG_ODOO_TRACEABILITY_ACTIONS_START' dist/index.html
+          grep -q 'sg-demo-trace-btn' dist/index.html
+          grep -q 'sg-new-work-order-btn' dist/index.html
+          grep -q 'App.data.lotMovements = await DB.getAll' dist/index.html
 
       - name: Install browser runtime
         run: |
@@ -58,7 +52,7 @@ jobs:
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Verify complete scenario
+      - name: Verify Gjethe Ferre end-to-end scenario
         run: |
           cd apps/web
           npm run start > /tmp/sg-web.log 2>&1 &
@@ -70,11 +64,3 @@ jobs:
           done
           cd ../..
           NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs
-
-      - name: Commit verified source and HTML
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/web/odoo-traceability-actions.js apps/web/index.html docs/final-odoo-traceability-diagnostic.txt
-          git commit -m 'Commit verified Odoo traceability source and HTML' || exit 0
-          git push origin odoo-traceability-actions
