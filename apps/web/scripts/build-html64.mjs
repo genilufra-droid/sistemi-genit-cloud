@@ -6,17 +6,23 @@ import { spawnSync } from 'node:child_process';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, '..');
 const repoDir = path.resolve(webDir, '../..');
-const sourceDir = path.join(repoDir, 'html64-source');
+const localSourceDir = path.join(webDir, 'html64-source');
+const rootSourceDir = path.join(repoDir, 'html64-source');
+const sourceDir = fs.existsSync(localSourceDir) ? localSourceDir : rootSourceDir;
 const distDir = path.join(webDir, 'dist');
 const packedPath = path.join(webDir, '.sistemi-genit-html64.xz');
 const outputPath = path.join(distDir, 'index.html');
+
+if (!fs.existsSync(sourceDir)) {
+  throw new Error(`Mungon dosja e burimit HTML 6.4: ${sourceDir}`);
+}
 
 const parts = fs.readdirSync(sourceDir)
   .filter((name) => /^xz-\d+\.b64$/.test(name))
   .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 
-if (parts.length === 0) {
-  throw new Error('Mungojnë pjesët e HTML 6.4 në html64-source.');
+if (parts.length !== 8) {
+  throw new Error(`Burimi HTML 6.4 është i paplotë: u gjetën ${parts.length}/8 pjesë.`);
 }
 
 const base64 = parts
@@ -28,15 +34,26 @@ fs.writeFileSync(packedPath, Buffer.from(base64, 'base64'));
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
 
-const result = spawnSync('xz', ['-dc', packedPath], {
-  encoding: null,
-  maxBuffer: 128 * 1024 * 1024,
-});
+function decompressWith(command, args) {
+  return spawnSync(command, args, {
+    encoding: null,
+    maxBuffer: 128 * 1024 * 1024,
+  });
+}
+
+let result = decompressWith('xz', ['-dc', packedPath]);
+if (result.error || result.status !== 0) {
+  result = decompressWith('python3', [
+    '-c',
+    'import lzma,sys;sys.stdout.buffer.write(lzma.open(sys.argv[1],"rb").read())',
+    packedPath,
+  ]);
+}
 
 fs.rmSync(packedPath, { force: true });
 
 if (result.error) {
-  throw new Error(`Nuk u ekzekutua xz: ${result.error.message}`);
+  throw new Error(`Dekompresimi nuk u ekzekutua: ${result.error.message}`);
 }
 if (result.status !== 0) {
   throw new Error(`Dekompresimi dështoi: ${String(result.stderr || '')}`);
