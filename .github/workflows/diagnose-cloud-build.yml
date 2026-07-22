@@ -8,19 +8,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
       - name: Install and capture build
         id: build
         continue-on-error: true
         run: |
+          mkdir -p docs
           set +e
           (
             set -euxo pipefail
@@ -32,15 +35,16 @@ jobs:
             grep -n 'cloud-first-admin-form' dist/index.html | head
             grep -n 'http://127.0.0.1:3100' dist/index.html | head
             grep -n 'SG_ODOO_TRACEABILITY_ACTIONS_START' dist/index.html | head
-          ) > /tmp/cloud-build.log 2>&1
+          ) > docs/phase3-cloud-build-report.txt 2>&1
           status=$?
-          cat /tmp/cloud-build.log
+          cat docs/phase3-cloud-build-report.txt
           exit $status
-      - name: Upload build report
+      - name: Commit report and remove diagnostic workflow
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase3-cloud-build-report
-          path: /tmp/cloud-build.log
-          if-no-files-found: error
-          retention-days: 7
+        run: |
+          rm -f .github/workflows/diagnose-cloud-build.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/phase3-cloud-build-report.txt .github/workflows/diagnose-cloud-build.yml
+          git commit -m 'Record Phase 3 Cloud web build diagnostic' || exit 0
+          git push origin HEAD:cloud-erp-phase3-online-core
