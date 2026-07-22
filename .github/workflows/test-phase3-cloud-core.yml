@@ -56,34 +56,64 @@ jobs:
           node --check tests/cloud-erp-adapter-smoke.cjs
 
       - name: Test PostgreSQL setup lock and cloud bootstrap
+        id: api_test
+        continue-on-error: true
         run: |
-          cd apps/api
-          node src/server.js > /tmp/genit-cloud-api.log 2>&1 &
-          api_pid=$!
-          trap 'kill $api_pid || true; cat /tmp/genit-cloud-api.log || true' EXIT
-          for attempt in $(seq 1 45); do
-            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && break
-            sleep 1
-          done
-          curl --fail --silent http://127.0.0.1:3000/api/setup/status > /tmp/setup-before.json
-          node -e "const x=require('/tmp/setup-before.json');if(x.needsSetup!==true)process.exit(1)"
-          curl --fail --silent -X POST http://127.0.0.1:3000/api/setup/admin \
-            -H 'Content-Type: application/json' \
-            --data '{"organizationName":"Genit CI","companyName":"Kompania CI","companyNipt":"L12345678A","warehouseName":"Magazina Qendrore","adminName":"Administrator CI","username":"admin_ci","email":"admin-ci@example.com","password":"AdminCloud123"}' \
-            > /tmp/setup.json
-          TOKEN=$(node -e "const x=require('/tmp/setup.json');if(!x.token)process.exit(1);process.stdout.write(x.token)")
-          code=$(curl --silent --output /tmp/setup-duplicate.json --write-out '%{http_code}' -X POST http://127.0.0.1:3000/api/setup/admin \
-            -H 'Content-Type: application/json' \
-            --data '{"organizationName":"Duplicate","companyName":"Duplicate","warehouseName":"Duplicate","adminName":"Duplicate","username":"duplicate","password":"Duplicate123"}')
-          test "$code" = "409"
-          curl --fail --silent http://127.0.0.1:3000/api/cloud/capabilities -H "Authorization: Bearer $TOKEN" > /tmp/capabilities.json
-          node -e "const x=require('/tmp/capabilities.json');if(x.mode!=='CLOUD_POSTGRESQL'||x.sourceOfTruth!=='POSTGRESQL'||x.multiUser!==true||x.tenantIsolation!==true)process.exit(1)"
-          curl --fail --silent http://127.0.0.1:3000/api/cloud/bootstrap -H "Authorization: Bearer $TOKEN" > /tmp/bootstrap.json
-          node -e "const x=require('/tmp/bootstrap.json');if(!x.user||x.companies.length!==1||x.warehouses.length!==1||x.access.companyIds.length!==1||x.access.warehouseIds.length!==1)process.exit(1)"
-          curl --fail --silent http://127.0.0.1:3000/api/setup/status > /tmp/setup-after.json
-          node -e "const x=require('/tmp/setup-after.json');if(x.needsSetup!==false)process.exit(1)"
-          kill $api_pid
-          trap - EXIT
+          set +e
+          {
+            set -euxo pipefail
+            cd apps/api
+            node src/server.js > /tmp/genit-cloud-api.log 2>&1 &
+            api_pid=$!
+            for attempt in $(seq 1 45); do
+              curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && break
+              sleep 1
+            done
+            curl --fail --silent http://127.0.0.1:3000/api/health
+            curl --fail --silent http://127.0.0.1:3000/api/setup/status > /tmp/setup-before.json
+            cat /tmp/setup-before.json
+            node -e "const x=require('/tmp/setup-before.json');if(x.needsSetup!==true)process.exit(1)"
+            curl --fail --silent -X POST http://127.0.0.1:3000/api/setup/admin \
+              -H 'Content-Type: application/json' \
+              --data '{"organizationName":"Genit CI","companyName":"Kompania CI","companyNipt":"L12345678A","warehouseName":"Magazina Qendrore","adminName":"Administrator CI","username":"admin_ci","email":"admin-ci@example.com","password":"AdminCloud123"}' \
+              > /tmp/setup.json
+            cat /tmp/setup.json
+            TOKEN=$(node -e "const x=require('/tmp/setup.json');if(!x.token)process.exit(1);process.stdout.write(x.token)")
+            code=$(curl --silent --output /tmp/setup-duplicate.json --write-out '%{http_code}' -X POST http://127.0.0.1:3000/api/setup/admin \
+              -H 'Content-Type: application/json' \
+              --data '{"organizationName":"Duplicate","companyName":"Duplicate","warehouseName":"Duplicate","adminName":"Duplicate","username":"duplicate","password":"Duplicate123"}')
+            cat /tmp/setup-duplicate.json
+            test "$code" = "409"
+            curl --fail --silent http://127.0.0.1:3000/api/cloud/capabilities -H "Authorization: Bearer $TOKEN" > /tmp/capabilities.json
+            cat /tmp/capabilities.json
+            node -e "const x=require('/tmp/capabilities.json');if(x.mode!=='CLOUD_POSTGRESQL'||x.sourceOfTruth!=='POSTGRESQL'||x.multiUser!==true||x.tenantIsolation!==true)process.exit(1)"
+            curl --fail --silent http://127.0.0.1:3000/api/cloud/bootstrap -H "Authorization: Bearer $TOKEN" > /tmp/bootstrap.json
+            cat /tmp/bootstrap.json
+            node -e "const x=require('/tmp/bootstrap.json');if(!x.user||x.companies.length!==1||x.warehouses.length!==1||x.access.companyIds.length!==1||x.access.warehouseIds.length!==1)process.exit(1)"
+            curl --fail --silent http://127.0.0.1:3000/api/setup/status > /tmp/setup-after.json
+            cat /tmp/setup-after.json
+            node -e "const x=require('/tmp/setup-after.json');if(x.needsSetup!==false)process.exit(1)"
+            kill $api_pid
+          } > /tmp/phase3-api-test.log 2>&1
+          status=$?
+          echo '' >> /tmp/phase3-api-test.log
+          echo '--- API SERVER LOG ---' >> /tmp/phase3-api-test.log
+          cat /tmp/genit-cloud-api.log >> /tmp/phase3-api-test.log 2>&1 || true
+          cat /tmp/phase3-api-test.log
+          exit $status
+
+      - name: Upload API diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-api-test-report
+          path: /tmp/phase3-api-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API result
+        if: steps.api_test.outcome != 'success'
+        run: exit 1
 
       - name: Build exact HTML with Cloud adapter
         working-directory: apps/web
