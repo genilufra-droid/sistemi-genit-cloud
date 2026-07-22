@@ -33,6 +33,8 @@ jobs:
           node --check tests/traceability-odoo-smoke.cjs
           grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
           grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
+          grep -q '200 kg' tests/traceability-odoo-smoke.cjs
+          grep -q '150 kg' tests/traceability-odoo-smoke.cjs
 
       - name: Patch exact HTML idempotently
         run: |
