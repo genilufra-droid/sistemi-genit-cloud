@@ -143,7 +143,7 @@ jobs:
         run: |
           mkdir -p /tmp/phase3-cloud-browser
           cd apps/web
-          npm run start > /tmp/genit-cloud-web.log 2>&1 &
+          PORT=4173 npm run start > /tmp/genit-cloud-web.log 2>&1 &
           web_pid=$!
           for attempt in $(seq 1 45); do
             curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
