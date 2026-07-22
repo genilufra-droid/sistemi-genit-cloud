@@ -26,11 +26,13 @@ jobs:
           ref: odoo-traceability-actions
           fetch-depth: 0
 
-      - name: Validate source syntax
+      - name: Validate source syntax and service binding
         run: |
           node --check apps/web/odoo-traceability-actions.js
           node --check scripts/patch-odoo-traceability.cjs
           node --check tests/traceability-odoo-smoke.cjs
+          grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
+          grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
 
       - name: Patch exact HTML idempotently
         run: |
