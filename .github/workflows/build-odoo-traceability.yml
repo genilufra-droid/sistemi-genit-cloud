@@ -21,10 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Validate source and production build command
         run: |
+          echo "Testing commit $(git rev-parse HEAD)"
           node --check apps/web/odoo-traceability-actions.js
           node --check scripts/patch-odoo-traceability.cjs
           node --check tests/traceability-odoo-smoke.cjs
