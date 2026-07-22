@@ -17,41 +17,43 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: odoo-traceability-actions
-      - name: Extract relevant source sections
+      - name: Extract targeted traceability services
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const src = fs.readFileSync('apps/web/index.html','utf8');
-          const lines = src.split(/\r?\n/);
+          const lines = fs.readFileSync('apps/web/index.html','utf8').split(/\r?\n/);
           const terms = [
-            'App.view_traceLots','App.openTraceLot','App.editTraceLot','App.saveTraceLot',
-            'saveTraceLot','createTraceLot','receiveLot','createLot','lotNumber',
-            'App.view_traceProcesses','App.editProcessBatch','App.saveProcessBatch','App.postProcessBatch','App.cancelProcessBatch',
-            'saveProcessBatch','postProcessBatch','processBatchInputs','lotMovements',
-            'saveTraceFarm','saveTraceParcel','saveTraceFieldActivity','traceQualityChecks',
-            'saleLine','lotId','lotNumber','quantityAvailable','quantityCreated'
+            'saveTraceLot','createTraceLot','receiveLot','saveLot','createLot',
+            'saveProcessBatch','postProcessBatch','cancelProcessBatch',
+            'App.saveProcessBatch','App.postProcessBatch','App.cancelProcessBatch',
+            'App.renderProcessInputs','App.openProcessBatch',
+            'DB.put(\'lots\'','DB.put("lots"','lotMovements','PROCESS_INPUT','PROCESS_OUTPUT','SALE'
           ];
-          const out = [];
-          for (const term of terms) {
-            out.push(`\n===== TERM: ${term} =====`);
-            let found = 0;
-            for (let i=0;i<lines.length;i++) {
-              if (!lines[i].includes(term)) continue;
-              found++;
-              out.push(`\n--- match ${found} at line ${i+1} ---`);
-              const a=Math.max(0,i-18), b=Math.min(lines.length,i+60);
-              for(let j=a;j<b;j++) out.push(`${j+1}: ${lines[j]}`);
-              if(found>=12) break;
+          const ranges=[];
+          for(const term of terms){
+            for(let i=0;i<lines.length;i++){
+              if(lines[i].includes(term)) ranges.push({term,start:Math.max(0,i-12),end:Math.min(lines.length,i+38),line:i+1});
             }
-            if(!found) out.push('NO MATCH');
+          }
+          ranges.sort((a,b)=>a.start-b.start);
+          const merged=[];
+          for(const r of ranges){
+            const last=merged[merged.length-1];
+            if(last && r.start<=last.end+3){last.end=Math.max(last.end,r.end);last.terms.push(`${r.term}@${r.line}`);} 
+            else merged.push({start:r.start,end:r.end,terms:[`${r.term}@${r.line}`]});
+          }
+          const out=[];
+          for(const r of merged){
+            out.push(`\n===== ${r.terms.join(', ')} =====`);
+            for(let i=r.start;i<r.end;i++) out.push(`${i+1}: ${lines[i]}`);
           }
           fs.mkdirSync('docs',{recursive:true});
-          fs.writeFileSync('docs/traceability-functions.txt',out.join('\n'));
+          fs.writeFileSync('docs/traceability-services.txt',out.join('\n'));
           NODE
       - name: Commit report
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/traceability-functions.txt
-          git commit -m 'Inspect traceability functions and services'
+          git add docs/traceability-services.txt
+          git commit -m 'Inspect traceability lot and process services'
           git push origin odoo-traceability-actions
