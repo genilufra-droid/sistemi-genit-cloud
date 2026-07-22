@@ -1,0 +1,1057 @@
+
+===== first-admin-form =====
+--- 1 @ 1340 ---
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+--- 2 @ 1341 ---
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+1382:     logout: logout,
+
+===== setup-display-name =====
+--- 1 @ 1340 ---
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+--- 2 @ 1348 ---
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+1382:     logout: logout,
+1383:     getCurrentUser: function () { return currentUser; },
+1384:     listUsers: listUsers,
+1385:     createUser: createUser,
+1386:     updateUser: updateUser,
+1387:     resetPassword: resetPassword,
+1388:     changeOwnPassword: changeOwnPassword,
+1389:     hasPermission: hasPermission,
+
+===== login-form =====
+--- 1 @ 1322 ---
+1304:     var shell = document.getElementById('app-shell');
+1305:     var root = document.getElementById('auth-root');
+1306:     var overlay = document.getElementById('modal-overlay');
+1307:     if (overlay) overlay.classList.remove('show');
+1308:     if (document.body) document.body.classList.remove('sidebar-open');
+1309:     if (shell) shell.style.display = 'none';
+1310:     if (root) { root.style.display = 'flex'; renderLogin(); }
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+--- 2 @ 1323 ---
+1305:     var root = document.getElementById('auth-root');
+1306:     var overlay = document.getElementById('modal-overlay');
+1307:     if (overlay) overlay.classList.remove('show');
+1308:     if (document.body) document.body.classList.remove('sidebar-open');
+1309:     if (shell) shell.style.display = 'none';
+1310:     if (root) { root.style.display = 'flex'; renderLogin(); }
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+
+===== login-username =====
+--- 1 @ 1322 ---
+1304:     var shell = document.getElementById('app-shell');
+1305:     var root = document.getElementById('auth-root');
+1306:     var overlay = document.getElementById('modal-overlay');
+1307:     if (overlay) overlay.classList.remove('show');
+1308:     if (document.body) document.body.classList.remove('sidebar-open');
+1309:     if (shell) shell.style.display = 'none';
+1310:     if (root) { root.style.display = 'flex'; renderLogin(); }
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+--- 2 @ 1329 ---
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+--- 3 @ 1335 ---
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+
+===== app-shell =====
+--- 1 @ 404 ---
+386: .workspace-tab-title{overflow:hidden;text-overflow:ellipsis}
+387: .workspace-tab-company{font-size:9px;line-height:1;padding:3px 5px;border-radius:9px;background:var(--primary);color:#fff;letter-spacing:.4px}
+388: .workspace-tab-close{display:inline-grid;place-items:center;width:19px;height:19px;border-radius:50%;font-size:16px;line-height:1;color:var(--text-muted)}
+389: .workspace-tab-close:hover{background:var(--red-bg);color:var(--red)}
+390: .import-type-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px}
+391: .import-type-card{display:flex;gap:14px;border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:#fbfaff;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+392: .import-type-icon{font-size:28px;width:42px;height:42px;display:grid;place-items:center;background:#eeeaf8;border-radius:10px;flex:0 0 auto}
+393: .import-type-content{min-width:0;flex:1}.import-type-content h3{margin:0 0 4px;color:var(--primary-dark);font-size:15px}.import-type-content p{margin:0 0 12px;color:var(--text-muted);font-size:12px;min-height:36px}
+394: .import-type-actions{display:flex;flex-wrap:wrap;gap:6px}
+395: .switch-row{display:flex;align-items:center;gap:8px;min-height:34px}.switch-row input{width:auto}
+396: @media(max-width:900px){.topbar{flex-wrap:wrap;gap:8px}.company-switcher-wrap{order:3;width:100%;min-width:0;margin:0}.company-switcher-wrap select{flex:1;min-width:0}.company-info{display:none}.workspace-tabs{margin-top:0}.import-type-grid{grid-template-columns:1fr}}
+397: @media(max-width:520px){.company-switcher-wrap label{display:none}.workspace-tab{max-width:190px}.import-type-card{padding:12px}.import-type-actions .btn{flex:1 1 30%}}
+398: 
+399: /* ===== 6.4 Cash / Bank approved document formats ===== */
+400: .cash-template-switch{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:#f7f5fb;border:1px solid var(--border);border-radius:8px}.cash-template-switch>span{font-weight:700;color:var(--primary-dark);margin-right:4px}.finance-paper-preview{background:#fff;color:#111;border:1px solid #b9b9b9;box-shadow:0 4px 18px rgba(0,0,0,.12);padding:22px;max-width:920px;margin:0 auto;overflow-x:auto}.finance-paper-preview.paper-landscape{max-width:1180px}.cash-paper-header h2{text-align:center;margin:0 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:.3px}.cash-paper-meta{display:flex;justify-content:space-between;gap:14px;font-size:12px;margin-bottom:8px}.cash-paper-account{font-size:12px;margin-bottom:10px}.cash-paper-table,.cash-denomination-table{width:100%;border-collapse:collapse;font-size:12px;background:#fff}.cash-paper-table th,.cash-paper-table td,.cash-denomination-table th,.cash-denomination-table td{border:1px solid #222;padding:5px 6px;vertical-align:middle}.cash-paper-table th{background:#faf8e8;color:#111;text-align:center;font-family:Georgia,'Times New Roman',serif;font-weight:700}.cash-paper-table .money,.cash-denomination-table .money{text-align:right;font-variant-numeric:tabular-nums}.cash-paper-table .center{text-align:center}.cash-opening-row,.cash-total-row{font-weight:700;background:#fffef3}.cash-total-row td:first-child{text-align:right}.cash-summary-box{width:min(100%,390px);margin:14px 0 0 auto;border:1px solid #222;background:#fff}.cash-summary-box>div{display:flex;justify-content:space-between;gap:12px;padding:6px 9px;border-bottom:1px solid #222;font-size:12px}.cash-summary-box>div:last-child{border-bottom:0}.cash-summary-final{font-weight:800;font-size:13px!important}.cash-book-bottom{display:grid;grid-template-columns:minmax(260px,1fr) minmax(300px,390px);gap:18px;align-items:start;margin-top:14px}.cash-denomination-table{max-width:340px}.cash-denomination-empty{border:1px dashed #aaa;padding:16px;color:#777}.cash-signatures{display:flex;justify-content:space-between;gap:30px;margin-top:34px;font-weight:700;font-size:12px}.mandate-page{max-width:960px;margin:0 auto}.mandate-page.two-copies{display:flex;flex-direction:column;gap:20px}.mandate-copy{border:2px solid #111;background:#fff;color:#111;page-break-inside:avoid}.mandate-head{display:grid;grid-template-columns:28% 44% 28%;min-height:110px}.mandate-company,.mandate-title,.mandate-amount{padding:12px;border-right:1px solid #111}.mandate-amount{border-right:0}.mandate-title{text-align:center}.mandate-title h2{font-family:Georgia,'Times New Roman',serif;margin:5px 0 28px}.mandate-title-meta{display:flex;justify-content:space-around;font-size:12px;font-weight:700}.mandate-amount>div{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #111;padding:12px 5px}.mandate-amount>div:last-child{border-bottom:0}.mandate-body-row{display:grid;grid-template-columns:150px 1fr;border-top:1px solid #111;min-height:44px}.mandate-body-row>strong,.mandate-body-row>span{padding:12px}.mandate-body-row>strong{font-family:Georgia,'Times New Roman',serif}.mandate-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:60px;text-align:center;font-weight:700;padding:35px 35px 12px}.mandate-signatures span{display:block;border-top:1px solid #111;margin-top:42px}.mandate-foot{display:flex;justify-content:space-between;padding:8px 12px;font-size:9px}
+401: @media(max-width:768px){.finance-paper-preview{padding:12px;margin:0 -10px}.cash-book-bottom{grid-template-columns:1fr}.cash-paper-meta,.cash-signatures{flex-direction:column;gap:6px}.cash-paper-table{min-width:760px}.cash-template-switch .btn{flex:1 1 120px}.mandate-head{grid-template-columns:1fr}.mandate-company,.mandate-title,.mandate-amount{border-right:0;border-bottom:1px solid #111}.mandate-body-row{grid-template-columns:105px 1fr}}
+402: </style></head><body>
+403: <div id="auth-root" class="auth-root"></div>
+404: <div class="app" id="app-shell" style="display:none">
+405:   <div class="sidebar">
+406:     <div class="sidebar-header"><div class="logo">🌿</div><h1>Sistemi Genit</h1><div class="sub">Menaxhim Biznesi</div></div>
+407:     <div class="nav-section"><div class="nav-section-title">Kryesore</div>
+408:       <div class="nav-item active" data-view="dashboard"><span class="icon">▦</span> Dashboard</div></div>
+409:     <div class="nav-section"><div class="nav-section-title">Blerje</div>
+410:       <div class="nav-item" data-view="partners"><span class="icon">👥</span> Partnerët</div>
+411:       <div class="nav-item" data-view="products"><span class="icon">📦</span> Artikujt</div>
+412:       <div class="nav-item" data-view="weightForm"><span class="icon">⚖</span> Formulari i Peshave</div>
+413:       <div class="nav-item" data-view="weightList"><span class="icon">📋</span> Listë Pesha</div>
+414:       <div class="nav-item" data-view="purchaseRFQs"><span class="icon">📨</span> Kërkesa për Ofertë</div>
+415:       <div class="nav-item" data-view="purchaseOrders"><span class="icon">🛒</span> Porosi Blerjeje</div>
+416:       <div class="nav-item" data-view="purchaseReceipts"><span class="icon">📥</span> Pranime Blerjeje</div>
+417:       <div class="nav-item" data-view="purchaseList"><span class="icon">🧾</span> Fatura Blerjeje</div>
+418:       <div class="nav-item" data-view="purchaseReturns"><span class="icon">↩️</span> Kthime Furnitori</div>
+419:       <div class="nav-item" data-view="supplierCreditNotes"><span class="icon">📄</span> Nota Krediti Furnitori</div></div>
+420:     <div class="nav-section"><div class="nav-section-title">Shitje</div>
+421:       <div class="nav-item" data-view="salesForm"><span class="icon">💰</span> Faturë Shitje</div>
+422:       <div class="nav-item" data-view="salesQuotations"><span class="icon">💬</span> Oferta Shitjeje</div>
+423:       <div class="nav-item" data-view="salesOrders"><span class="icon">🛍️</span> Porosi Shitjeje</div>
+424:       <div class="nav-item" data-view="deliveryNotes"><span class="icon">🚚</span> Fletë-Dalje / Dorëzime</div>
+425:       <div class="nav-item" data-view="salesList"><span class="icon">📑</span> Fatura Shitjeje</div>
+426:       <div class="nav-item" data-view="creditNotes"><span class="icon">↪️</span> Nota Krediti Klienti</div></div>
+427:     <div class="nav-section"><div class="nav-section-title">Gjurmueshmëri GACP</div>
+428:       <div class="nav-item" data-view="traceOrigins"><span class="icon">📍</span> Ferma & Origjina</div>
+429:       <div class="nav-item" data-view="traceLots"><span class="icon">🏷️</span> Lote</div>
+430:       <div class="nav-item" data-view="traceProcesses"><span class="icon">⚙️</span> Proces & Paketim</div>
+431:       <div class="nav-item" data-view="traceQuality"><span class="icon">🧪</span> Kontroll Cilësie</div>
+432:       <div class="nav-item" data-view="traceReports"><span class="icon">🌿</span> Raporte Gjurmueshmërie</div>
+433:       <div class="nav-item" data-view="traceRecalls"><span class="icon">🚨</span> Tërheqje Produkti</div></div>
+434:     <div class="nav-section"><div class="nav-section-title">Arka</div>
+435:       <div class="nav-item" data-view="cashDashboard"><span class="icon">💵</span> Paneli i Arkës</div>
+436:       <div class="nav-item" data-view="cashAccounts"><span class="icon">💼</span> Llogaritë e Arkës</div>
+437:       <div class="nav-item" data-view="cashReceipts"><span class="icon">📥</span> Mandat Arkëtimi</div>
+438:       <div class="nav-item" data-view="cashPayments"><span class="icon">📤</span> Mandat Pagese</div>
+439:       <div class="nav-item" data-view="cashJournal"><span class="icon">📒</span> Ditari i Arkës</div>
+440:       <div class="nav-item" data-view="cashMovements"><span class="icon">↕️</span> Lëvizjet e Arkës</div>
+441:       <div class="nav-item" data-view="cashBalance"><span class="icon">⚖️</span> Gjendja e Arkës</div>
+442:       <div class="nav-item" data-view="cashClosing"><span class="icon">🔐</span> Mbyllja Ditore</div>
+443:       <div class="nav-item" data-view="cashReports"><span class="icon">📊</span> Raportet e Arkës</div></div>
+444:     <div class="nav-section"><div class="nav-section-title">Banka</div>
+445:       <div class="nav-item" data-view="bankDashboard"><span class="icon">🏦</span> Paneli i Bankës</div>
+--- 2 @ 1304 ---
+1286:         return null;
+1287:       }
+1288:       currentUser = sanitizeUser(user);
+1289:       return currentUser;
+1290:     } catch (e) {
+1291:       sessionRemove(SESSION_KEY);
+1292:       return null;
+1293:     }
+1294:   }
+1295: 
+1296:   async function logout() {
+1297:     if (currentUser) {
+1298:       try {
+1299:         await DB.put('auditLogs', {id:DB.genId('audit'),entity:'auth',entityId:currentUser.id,action:'LOGOUT',before:null,after:null,sourceDoc:currentUser.username,user:currentUser.username,timestamp:new Date().toISOString()});
+1300:       } catch (e) { console.warn('Logout audit failed', e); }
+1301:     }
+1302:     currentUser = null;
+1303:     sessionRemove(SESSION_KEY);
+1304:     var shell = document.getElementById('app-shell');
+1305:     var root = document.getElementById('auth-root');
+1306:     var overlay = document.getElementById('modal-overlay');
+1307:     if (overlay) overlay.classList.remove('show');
+1308:     if (document.body) document.body.classList.remove('sidebar-open');
+1309:     if (shell) shell.style.display = 'none';
+1310:     if (root) { root.style.display = 'flex'; renderLogin(); }
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+--- 3 @ 1359 ---
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+1382:     logout: logout,
+1383:     getCurrentUser: function () { return currentUser; },
+1384:     listUsers: listUsers,
+1385:     createUser: createUser,
+1386:     updateUser: updateUser,
+1387:     resetPassword: resetPassword,
+1388:     changeOwnPassword: changeOwnPassword,
+1389:     hasPermission: hasPermission,
+1390:     requirePermission: requirePermission,
+1391:     canView: canView,
+1392:     sanitizeUser: sanitizeUser
+1393:   };
+1394: })(window);
+1395: 
+1396: 
+1397: /* ===== calc.js ===== */
+1398: /**
+1399:  * Sistemi Genit — Domain/Service Layer
+1400:  * AUTHORITATIVE business calculations. The UI never computes final posted values.
+
+===== first-admin =====
+--- 1 @ 1340 ---
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+--- 2 @ 1341 ---
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+1382:     logout: logout,
+
+===== showFirstAdmin =====
+NO MATCH
+
+===== renderLogin =====
+--- 1 @ 1310 ---
+1292:       return null;
+1293:     }
+1294:   }
+1295: 
+1296:   async function logout() {
+1297:     if (currentUser) {
+1298:       try {
+1299:         await DB.put('auditLogs', {id:DB.genId('audit'),entity:'auth',entityId:currentUser.id,action:'LOGOUT',before:null,after:null,sourceDoc:currentUser.username,user:currentUser.username,timestamp:new Date().toISOString()});
+1300:       } catch (e) { console.warn('Logout audit failed', e); }
+1301:     }
+1302:     currentUser = null;
+1303:     sessionRemove(SESSION_KEY);
+1304:     var shell = document.getElementById('app-shell');
+1305:     var root = document.getElementById('auth-root');
+1306:     var overlay = document.getElementById('modal-overlay');
+1307:     if (overlay) overlay.classList.remove('show');
+1308:     if (document.body) document.body.classList.remove('sidebar-open');
+1309:     if (shell) shell.style.display = 'none';
+1310:     if (root) { root.style.display = 'flex'; renderLogin(); }
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+--- 2 @ 1320 ---
+1302:     currentUser = null;
+1303:     sessionRemove(SESSION_KEY);
+1304:     var shell = document.getElementById('app-shell');
+1305:     var root = document.getElementById('auth-root');
+1306:     var overlay = document.getElementById('modal-overlay');
+1307:     if (overlay) overlay.classList.remove('show');
+1308:     if (document.body) document.body.classList.remove('sidebar-open');
+1309:     if (shell) shell.style.display = 'none';
+1310:     if (root) { root.style.display = 'flex'; renderLogin(); }
+1311:   }
+1312: 
+1313:   function setAuthMessage(message, type) {
+1314:     var el = document.getElementById('auth-message');
+1315:     if (!el) return;
+1316:     el.className = 'auth-message ' + (type || 'error');
+1317:     el.textContent = message || '';
+1318:   }
+1319: 
+1320:   function renderLogin() {
+1321:     var root = document.getElementById('auth-root');
+1322:     root.innerHTML = '<div class="auth-card"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Sistemi Genit</h1><p>Hyrje e sigurt në sistem</p></div><div id="auth-message" class="auth-message"></div><form id="login-form"><div class="form-group"><label>Username</label><input id="login-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi</label><input id="login-password" type="password" autocomplete="current-password" required></div><button class="btn btn-primary auth-submit" type="submit">🔐 Hyr</button></form></div>';
+1323:     document.getElementById('login-form').addEventListener('submit', async function (event) {
+1324:       event.preventDefault();
+1325:       var button = event.currentTarget.querySelector('button');
+1326:       button.disabled = true;
+1327:       setAuthMessage('Duke verifikuar...', 'info');
+1328:       try {
+1329:         await login(document.getElementById('login-username').value, document.getElementById('login-password').value);
+1330:         await startApplication();
+1331:       } catch (e) {
+1332:         setAuthMessage(e.message || String(e), 'error');
+1333:       } finally { button.disabled = false; }
+1334:     });
+1335:     setTimeout(function(){var x=document.getElementById('login-username');if(x)x.focus();}, 0);
+1336:   }
+1337: 
+1338:   function renderFirstAdminSetup() {
+1339:     var root = document.getElementById('auth-root');
+1340:     root.innerHTML = '<div class="auth-card auth-card-wide"><div class="auth-brand"><div class="auth-logo">🌿</div><h1>Konfigurimi i parë</h1><p>Krijo administratorin e parë. Nuk krijohet asnjë user demo.</p></div><div id="auth-message" class="auth-message"></div><form id="first-admin-form"><div class="form-grid"><div class="form-group"><label>Emri i plotë *</label><input id="setup-display-name" required></div><div class="form-group"><label>Username *</label><input id="setup-username" autocomplete="username" required></div><div class="form-group"><label>Fjalëkalimi *</label><input id="setup-password" type="password" autocomplete="new-password" required></div><div class="form-group"><label>Përsërit fjalëkalimin *</label><input id="setup-password-confirm" type="password" autocomplete="new-password" required></div></div><div class="auth-hint">Minimumi 8 karaktere, me shkronja dhe numra.</div><button class="btn btn-green auth-submit" type="submit">✓ Krijo Administratorin</button></form></div>';
+1341:     document.getElementById('first-admin-form').addEventListener('submit', async function (event) {
+1342:       event.preventDefault();
+1343:       var p = document.getElementById('setup-password').value;
+1344:       var pc = document.getElementById('setup-password-confirm').value;
+1345:       if (p !== pc) { setAuthMessage('Fjalëkalimet nuk përputhen.', 'error'); return; }
+1346:       var button = event.currentTarget.querySelector('button'); button.disabled = true;
+1347:       try {
+1348:         var input = {displayName:document.getElementById('setup-display-name').value,username:document.getElementById('setup-username').value,password:p,role:'ADMIN'};
+1349:         await createUser(input, {firstAdmin:true});
+1350:         await login(input.username, input.password);
+1351:         await startApplication();
+1352:       } catch (e) { setAuthMessage(e.message || String(e), 'error'); }
+1353:       finally { button.disabled = false; }
+1354:     });
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+--- 3 @ 1373 ---
+1355:   }
+1356: 
+1357:   async function startApplication() {
+1358:     document.getElementById('auth-root').style.display = 'none';
+1359:     var shell = document.getElementById('app-shell');
+1360:     shell.style.display = 'flex';
+1361:     if (!global.App || typeof global.App.init !== 'function') throw new Error('Moduli i aplikacionit nuk u ngarkua.');
+1362:     await global.App.init();
+1363:     if (global.App.applyAuthUI) global.App.applyAuthUI();
+1364:     if (currentUser && currentUser.mustChangePassword && global.App.openChangeOwnPassword) global.App.openChangeOwnPassword(true);
+1365:   }
+1366: 
+1367:   async function bootstrap() {
+1368:     await DB.open();
+1369:     var users = await listUsers();
+1370:     if (!users.length) { renderFirstAdminSetup(); return; }
+1371:     var restored = await restoreSession();
+1372:     if (restored) { await startApplication(); return; }
+1373:     renderLogin();
+1374:   }
+1375: 
+1376:   global.Auth = {
+1377:     ROLE_LABELS: ROLE_LABELS,
+1378:     ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+1379:     VIEW_PERMISSIONS: VIEW_PERMISSIONS,
+1380:     bootstrap: bootstrap,
+1381:     login: login,
+1382:     logout: logout,
+1383:     getCurrentUser: function () { return currentUser; },
+1384:     listUsers: listUsers,
+1385:     createUser: createUser,
+1386:     updateUser: updateUser,
+1387:     resetPassword: resetPassword,
+1388:     changeOwnPassword: changeOwnPassword,
+1389:     hasPermission: hasPermission,
+1390:     requirePermission: requirePermission,
+1391:     canView: canView,
+1392:     sanitizeUser: sanitizeUser
+1393:   };
+1394: })(window);
+1395: 
+1396: 
+1397: /* ===== calc.js ===== */
+1398: /**
+1399:  * Sistemi Genit — Domain/Service Layer
+1400:  * AUTHORITATIVE business calculations. The UI never computes final posted values.
+1401:  * All monetary and stock calculations happen here with decimal-safe arithmetic.
+1402:  */
+1403: (function (global) {
+1404:   'use strict';
+1405: 
+1406:   // ---- Decimal-safe arithmetic (avoid binary float errors) ----
+1407:   function round2(v) { return Math.round((parseFloat(v) + Number.EPSILON) * 100) / 100; }
+1408:   function round3(v) { return Math.round((parseFloat(v) + Number.EPSILON) * 1000) / 1000; }
+1409:   function round4(v) { return Math.round((parseFloat(v) + Number.EPSILON) * 10000) / 10000; }
+1410:   function toNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+1411: 
+1412:   // ---- Document number generation ----
+1413:   function nextDocNumber(type, existing) {
+1414:     const year = new Date().getFullYear();
+
+===== showLogin =====
+NO MATCH
