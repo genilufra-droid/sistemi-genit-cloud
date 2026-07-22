@@ -1,0 +1,81 @@
+name: Final functional patch
+
+on:
+  push:
+    branches: [functional-rebuild-html-reference]
+    paths:
+      - '.github/workflows/functional-self-check.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: functional-rebuild-html-reference
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply final logic corrections
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          function replaceExact(path, from, to) {
+            const current = fs.readFileSync(path, 'utf8');
+            if (!current.includes(from)) throw new Error(`Pattern not found in ${path}`);
+            fs.writeFileSync(path, current.replace(from, to));
+          }
+
+          replaceExact(
+            'apps/web/src/Phase2Pages.jsx',
+            `    if (kind === 'product') {\n      setProducts((current) => [...current, record]);\n      selectProduct(context.index ?? 0, record.id);\n    }`,
+            `    if (kind === 'product') {\n      setProducts((current) => [...current, record]);\n      setForm((current) => ({\n        ...current,\n        items: current.items.map((item, itemIndex) => itemIndex === (context.index ?? 0)\n          ? lineFromProduct(record, type, item)\n          : item),\n      }));\n    }`,
+          );
+
+          replaceExact(
+            'apps/web/src/Phase2Pages.jsx',
+            `    const coefficient = unit === product?.pack_unit\n      ? Number(product.pack_coefficient || 1)\n      : unit === product?.pallet_unit\n        ? Number(product.pallet_coefficient || 1)\n        : 1;\n    setForm((current) => ({\n      ...current,\n      items: current.items.map((line, itemIndex) => itemIndex === index ? { ...line, unit, coefficient } : line),\n    }));`,
+            `    const coefficient = unit === product?.pack_unit\n      ? Number(product.pack_coefficient || 1)\n      : unit === product?.pallet_unit\n        ? Number(product.pallet_coefficient || 1)\n        : 1;\n    const basePrice = String(type).startsWith('PURCHASE')\n      ? Number(product?.purchase_price || 0)\n      : Number(product?.sale_price || 0);\n    setForm((current) => ({\n      ...current,\n      items: current.items.map((line, itemIndex) => itemIndex === index\n        ? { ...line, unit, coefficient, unitPrice: basePrice * coefficient }\n        : line),\n    }));`,
+          );
+
+          replaceExact(
+            'apps/web/src/documentExport.js',
+            `  const popup = window.open('', '_blank', 'noopener,noreferrer');\n  if (!popup) throw new Error('Browseri bllokoi dritaren e dokumentit. Lejo pop-up për këtë faqe.');`,
+            `  const popup = window.open('', '_blank');\n  if (!popup) throw new Error('Browseri bllokoi dritaren e dokumentit. Lejo pop-up për këtë faqe.');\n  popup.opener = null;`,
+          );
+
+          replaceExact(
+            'apps/api/src/phase2-documents.js',
+            `        for(const item of items) {\n          const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);\n          await insertStockMovement(client, {`,
+            `        for(const item of items) {\n          const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);\n          if (sign > 0) {\n            const available = await client.query(\n              'SELECT COALESCE(SUM(quantity_base),0)::numeric AS qty FROM stock_movements WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND product_id=$4',\n              [req.user.tenant_id,document.company_id,document.warehouse_id,item.product_id],\n            );\n            if (Number(available.rows[0].qty) + 1e-9 < quantityBase) {\n              throw requestError(\`Anulimi do të krijonte stok negativ për \${item.description}.\`,409);\n            }\n          }\n          await insertStockMovement(client, {`,
+          );
+          NODE
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check API
+        run: npm run check --workspace apps/api
+
+      - name: Build Web
+        run: npm run build --workspace apps/web
+
+      - name: Commit corrections
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/Phase2Pages.jsx apps/web/src/documentExport.js apps/api/src/phase2-documents.js
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Finalize document logic and stock safety'
+          git push origin functional-rebuild-html-reference
