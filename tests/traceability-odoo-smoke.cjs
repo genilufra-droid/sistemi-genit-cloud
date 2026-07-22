@@ -44,7 +44,7 @@ let diagnosticPage = null;
   await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
   await page.waitForFunction(() => Boolean(window.App && window.DB && window.App.SGOdooTrace), null, { timeout: 30000 });
 
-  await page.locator('.nav-item[data-view="traceLots"]').evaluate(el => el.click());
+  await page.evaluate(() => App.navigate('traceLots'));
   await page.waitForSelector('#sg-new-lot-btn', { state: 'visible' });
   await page.waitForSelector('#sg-demo-trace-btn', { state: 'visible' });
   await page.click('#sg-demo-trace-btn');
@@ -95,7 +95,7 @@ let diagnosticPage = null;
   }, ids.lotId);
   if (!actionChecks.excelCalled || !actionChecks.printCalled) throw new Error('Veprimi Excel ose Print nuk u ekzekutua.');
 
-  await page.locator('.nav-item[data-view="traceProcesses"]').evaluate(el => el.click());
+  await page.evaluate(() => App.navigate('traceProcesses'));
   await page.waitForSelector('#sg-new-work-order-btn', { state: 'visible' });
   await page.waitForSelector(`tr[data-batch-id="${ids.batchId}"]`, { timeout: 15000 });
   await page.locator(`tr[data-batch-id="${ids.batchId}"] .sg-eye-btn`).click();
