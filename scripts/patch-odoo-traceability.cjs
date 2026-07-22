@@ -17,8 +17,10 @@ const block = `${start}\n<style id="sg-odoo-traceability-actions-style">\n${css}
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 html = html.replace(new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, 'g'), '');
-if (!/<\/body>/i.test(html)) throw new Error('Mungon </body> në apps/web/index.html');
-html = html.replace(/<\/body>/i, `${block}\n</body>`);
+const lower = html.toLowerCase();
+const bodyIndex = lower.lastIndexOf('</body>');
+if (bodyIndex < 0) throw new Error('Mungon </body> në apps/web/index.html');
+html = html.slice(0, bodyIndex) + block + '\n' + html.slice(bodyIndex);
 fs.writeFileSync(htmlPath, html);
 
 const check = fs.readFileSync(htmlPath, 'utf8');
@@ -26,4 +28,7 @@ if ((check.match(/SG_ODOO_TRACEABILITY_ACTIONS_START/g) || []).length !== 1) thr
 if (!check.includes('Test: Gjethe Ferre 200 → 50 kg')) throw new Error('Butoni demo mungon pas patch-it.');
 if (!check.includes('+ Urdhër Pune')) throw new Error('Butoni Urdhër Pune mungon pas patch-it.');
 if (!check.includes('+ Lot i Ri')) throw new Error('Butoni Lot i Ri mungon pas patch-it.');
+const markerIndex = check.indexOf(start);
+const finalBodyIndex = check.toLowerCase().lastIndexOf('</body>');
+if (markerIndex < 0 || markerIndex > finalBodyIndex) throw new Error('Patch-i nuk u vendos para </body> të fundit.');
 console.log(`Patched ${htmlPath}: ${Buffer.byteLength(check)} bytes`);
