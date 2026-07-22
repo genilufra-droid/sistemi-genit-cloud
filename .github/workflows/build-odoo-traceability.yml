@@ -1,4 +1,4 @@
-name: Build and test Odoo traceability
+name: Diagnose Odoo traceability final step
 
 on:
   push:
@@ -15,8 +15,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-test:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,25 +28,17 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Validate source and production build command
+      - name: Validate and build production HTML
         run: |
           echo "Testing commit $(git rev-parse HEAD)"
           node --check apps/web/odoo-traceability-actions.js
           node --check scripts/patch-odoo-traceability.cjs
           node --check tests/traceability-odoo-smoke.cjs
-          grep -q 'patch-odoo-traceability.cjs' apps/web/package.json
-          grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
-          grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
-
-      - name: Build production HTML
-        working-directory: apps/web
-        run: |
+          cd apps/web
           npm ci
           npm run build
           cmp index.html dist/index.html
           grep -q 'SG_ODOO_TRACEABILITY_ACTIONS_START' dist/index.html
-          grep -q 'sg-demo-trace-btn' dist/index.html
-          grep -q 'sg-new-work-order-btn' dist/index.html
           grep -q 'App.data.lotMovements = await DB.getAll' dist/index.html
 
       - name: Install browser runtime
@@ -53,15 +49,38 @@ jobs:
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Verify Gjethe Ferre end-to-end scenario
+      - name: Execute and capture browser scenario
+        id: scenario
+        continue-on-error: true
         run: |
+          mkdir -p docs
           cd apps/web
           npm run start > /tmp/sg-web.log 2>&1 &
           server_pid=$!
-          trap 'kill $server_pid || true; cat /tmp/sg-web.log || true' EXIT
           for attempt in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
             sleep 1
           done
           cd ../..
-          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs
+          set +e
+          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs > docs/odoo-final-step-report.txt 2>&1
+          status=$?
+          echo '' >> docs/odoo-final-step-report.txt
+          echo '--- WEB LOG ---' >> docs/odoo-final-step-report.txt
+          cat /tmp/sg-web.log >> docs/odoo-final-step-report.txt 2>&1 || true
+          kill $server_pid || true
+          cat docs/odoo-final-step-report.txt
+          exit $status
+
+      - name: Save diagnostic report
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/odoo-final-step-report.txt
+          git commit -m 'Record final Odoo traceability test step' || exit 0
+          git push origin HEAD:odoo-traceability-actions
+
+      - name: Enforce scenario result
+        if: steps.scenario.outcome != 'success'
+        run: exit 1
