@@ -1,13 +1,9 @@
-name: Inspect process state after Odoo traceability synchronization
+name: Commit verified Odoo traceability files
 
 on:
   push:
     branches: [odoo-traceability-actions]
     paths:
-      - 'apps/web/odoo-traceability-actions.js'
-      - 'apps/web/odoo-traceability-actions.css'
-      - 'scripts/patch-odoo-traceability.cjs'
-      - 'tests/traceability-odoo-smoke.cjs'
       - '.github/workflows/build-odoo-traceability.yml'
   workflow_dispatch:
 
@@ -15,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  inspect-test:
+  finalize-files:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +20,7 @@ jobs:
           ref: odoo-traceability-actions
           fetch-depth: 0
 
-      - name: Synchronize scenario and enable state logging
+      - name: Apply verified synchronization
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -37,23 +33,13 @@ jobs:
           elif new not in s:
               raise SystemExit('Scenario synchronization anchor not found')
           p.write_text(s)
-
-          t = Path('tests/traceability-odoo-smoke.cjs')
-          q = t.read_text()
-          marker = "  console.log('SCENARIO_STATE=' + JSON.stringify(state));"
-          anchor = "  if (!state.lot || state.lot.quantityCreated !== 200"
-          if marker not in q:
-              if anchor not in q:
-                  raise SystemExit('Test state anchor not found')
-              q = q.replace(anchor, marker + "\n\n" + anchor, 1)
-          t.write_text(q)
           PY
+          rm -f docs/final-odoo-traceability-diagnostic.txt
           node --check apps/web/odoo-traceability-actions.js
           node --check tests/traceability-odoo-smoke.cjs
 
-      - name: Patch and build HTML
+      - name: Generate final HTML
         run: |
-          node --check scripts/patch-odoo-traceability.cjs
           node scripts/patch-odoo-traceability.cjs
           first=$(sha256sum apps/web/index.html | cut -d' ' -f1)
           node scripts/patch-odoo-traceability.cjs
@@ -72,38 +58,23 @@ jobs:
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Execute Gjethe Ferre browser scenario
-        id: scenario
-        continue-on-error: true
+      - name: Verify complete scenario
         run: |
-          mkdir -p docs
           cd apps/web
           npm run start > /tmp/sg-web.log 2>&1 &
           server_pid=$!
+          trap 'kill $server_pid || true; cat /tmp/sg-web.log || true' EXIT
           for attempt in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
             sleep 1
           done
           cd ../..
-          set +e
-          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs > docs/final-odoo-traceability-diagnostic.txt 2>&1
-          test_status=$?
-          echo '' >> docs/final-odoo-traceability-diagnostic.txt
-          echo '--- WEB SERVER LOG ---' >> docs/final-odoo-traceability-diagnostic.txt
-          cat /tmp/sg-web.log >> docs/final-odoo-traceability-diagnostic.txt 2>&1 || true
-          kill $server_pid || true
-          cat docs/final-odoo-traceability-diagnostic.txt
-          exit $test_status
+          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs
 
-      - name: Save diagnostic and patched test
-        if: always()
+      - name: Commit verified source and HTML
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/final-odoo-traceability-diagnostic.txt tests/traceability-odoo-smoke.cjs
-          git commit -m 'Record process state from Odoo traceability test' || exit 0
+          git add apps/web/odoo-traceability-actions.js apps/web/index.html docs/final-odoo-traceability-diagnostic.txt
+          git commit -m 'Commit verified Odoo traceability source and HTML' || exit 0
           git push origin odoo-traceability-actions
-
-      - name: Enforce result
-        if: steps.scenario.outcome != 'success'
-        run: exit 1
