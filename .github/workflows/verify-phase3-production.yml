@@ -5,12 +5,14 @@ on:
     branches: [verify-phase3-production]
     paths:
       - '.github/workflows/verify-phase3-production.yml'
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: verify-phase3-production
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -22,14 +24,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'verify-phase3-production' }}
+          ref: verify-phase3-production
           fetch-depth: 0
 
       - name: Wait for Railway and verify live Cloud configuration
         id: production
         continue-on-error: true
         run: |
-          mkdir -p /tmp/phase3-production
+          mkdir -p docs /tmp/phase3-production
           set +e
           (
             set -euxo pipefail
@@ -76,7 +78,7 @@ jobs:
               -H 'Origin: https://genit-web-production.up.railway.app' \
               -H 'Access-Control-Request-Method: GET')
             test "$code" = "204" -o "$code" = "200"
-            cat > /tmp/phase3-production/verification.json <<EOF
+            cat > docs/phase3-production-verification.json <<EOF
             {
               "result": "PRODUCTION_SUCCESS",
               "verifiedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -93,33 +95,31 @@ jobs:
           ) > /tmp/phase3-production/verification.log 2>&1
           status=$?
           if [ "$status" != "0" ]; then
-            cat > /tmp/phase3-production/verification.json <<EOF
+            cat > docs/phase3-production-verification.json <<EOF
             {
               "result": "PRODUCTION_FAILED",
               "verifiedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
               "webUrl": "$WEB_URL",
               "expectedCommit": "$EXPECTED_COMMIT",
-              "message": "Shih verification.log"
+              "message": "Shih phase3-production-verification.log"
             }
             EOF
           fi
-          cat /tmp/phase3-production/verification.log
-          cat /tmp/phase3-production/verification.json
+          cp /tmp/phase3-production/verification.log docs/phase3-production-verification.log
+          cat docs/phase3-production-verification.log
+          cat docs/phase3-production-verification.json
           exit $status
 
-      - name: Upload production verification report
+      - name: Commit report and remove verifier
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase3-production-verification
-          path: |
-            /tmp/phase3-production/verification.json
-            /tmp/phase3-production/verification.log
-            /tmp/phase3-production/config.json
-            /tmp/phase3-production/health.json
-            /tmp/phase3-production/setup-status.json
-          if-no-files-found: warn
-          retention-days: 7
+        run: |
+          rm -f .github/workflows/verify-phase3-production.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/phase3-production-verification.json docs/phase3-production-verification.log .github/workflows/verify-phase3-production.yml
+          git commit -m 'Record Phase 3 production deployment verification' || exit 0
+          git pull --rebase origin verify-phase3-production
+          git push origin HEAD:verify-phase3-production
 
       - name: Enforce production result
         if: steps.production.outcome != 'success'
