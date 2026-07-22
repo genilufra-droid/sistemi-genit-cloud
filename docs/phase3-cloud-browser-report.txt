@@ -1,8 +1,12 @@
-page.waitForSelector: Timeout 30000ms exceeded.
-Call log:
-  - waiting for locator('#cloud-first-admin-form') to be visible
-
-    at /home/runner/work/sistemi-genit-cloud/sistemi-genit-cloud/tests/cloud-erp-adapter-smoke.cjs:185:14
+{
+  "result": "TEST_SUCCESS",
+  "setupCalls": 1,
+  "bootstrapCalls": 4,
+  "productWrites": 1,
+  "partnerWrites": 1,
+  "persistedAcrossReload": true,
+  "sourceOfTruth": "POSTGRESQL"
+}
 
 --- WEB SERVER LOG ---
 npm warn config ignoring workspace config at /home/runner/work/sistemi-genit-cloud/sistemi-genit-cloud/apps/web/.npmrc
@@ -11,4 +15,4 @@ npm warn config ignoring workspace config at /home/runner/work/sistemi-genit-clo
 > vite preview --host 0.0.0.0 --port ${PORT:-4173}
 
   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m4173[22m/[39m
-  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.1.1.141:[1m4173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.1.0.181:[1m4173[22m/[39m
