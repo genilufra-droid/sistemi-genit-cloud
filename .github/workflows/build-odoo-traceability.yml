@@ -1,4 +1,4 @@
-name: Fix and verify Odoo traceability synchronization
+name: Inspect process state after Odoo traceability synchronization
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  fix-test:
+  inspect-test:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +24,7 @@ jobs:
           ref: odoo-traceability-actions
           fetch-depth: 0
 
-      - name: Synchronize scenario data after posting
+      - name: Synchronize scenario and enable state logging
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -37,13 +37,23 @@ jobs:
           elif new not in s:
               raise SystemExit('Scenario synchronization anchor not found')
           p.write_text(s)
+
+          t = Path('tests/traceability-odoo-smoke.cjs')
+          q = t.read_text()
+          marker = "  console.log('SCENARIO_STATE=' + JSON.stringify(state));"
+          anchor = "  if (!state.lot || state.lot.quantityCreated !== 200"
+          if marker not in q:
+              if anchor not in q:
+                  raise SystemExit('Test state anchor not found')
+              q = q.replace(anchor, marker + "\n\n" + anchor, 1)
+          t.write_text(q)
           PY
           node --check apps/web/odoo-traceability-actions.js
+          node --check tests/traceability-odoo-smoke.cjs
 
       - name: Patch and build HTML
         run: |
           node --check scripts/patch-odoo-traceability.cjs
-          node --check tests/traceability-odoo-smoke.cjs
           node scripts/patch-odoo-traceability.cjs
           first=$(sha256sum apps/web/index.html | cut -d' ' -f1)
           node scripts/patch-odoo-traceability.cjs
@@ -85,22 +95,15 @@ jobs:
           cat docs/final-odoo-traceability-diagnostic.txt
           exit $test_status
 
-      - name: Commit passing source and HTML
-        if: steps.scenario.outcome == 'success'
+      - name: Save diagnostic and patched test
+        if: always()
         run: |
-          rm -f docs/final-odoo-traceability-diagnostic.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/web/odoo-traceability-actions.js apps/web/index.html docs/final-odoo-traceability-diagnostic.txt
-          git commit -m 'Synchronize and verify Odoo traceability scenario' || exit 0
+          git add docs/final-odoo-traceability-diagnostic.txt tests/traceability-odoo-smoke.cjs
+          git commit -m 'Record process state from Odoo traceability test' || exit 0
           git push origin odoo-traceability-actions
 
-      - name: Save failing diagnostic
+      - name: Enforce result
         if: steps.scenario.outcome != 'success'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/final-odoo-traceability-diagnostic.txt
-          git commit -m 'Record failed Odoo traceability synchronization test' || exit 0
-          git push origin odoo-traceability-actions
-          exit 1
+        run: exit 1
