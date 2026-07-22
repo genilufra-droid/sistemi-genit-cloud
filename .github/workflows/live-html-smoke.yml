@@ -5,6 +5,8 @@ on:
     branches: [exact-html-online]
     paths:
       - '.github/workflows/live-html-smoke.yml'
+  pull_request:
+    branches: [main]
 
 jobs:
   verify-live:
