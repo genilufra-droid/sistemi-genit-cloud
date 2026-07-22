@@ -1,13 +1,48 @@
 <!doctype html>
 <html lang="sq">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#3e3160" />
-    <title>Sistemi Genit Cloud</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#3e3160" />
+  <title>Sistemi Genit</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f0eef5;color:#3e3160;font-family:Segoe UI,system-ui,sans-serif}.loader{width:min(430px,calc(100% - 32px));background:#fff;border-radius:14px;padding:28px;box-shadow:0 12px 40px #2b214526;text-align:center}.logo{font-size:42px}.loader h1{font-size:22px;margin:8px 0}.loader p{color:#6b6b80;margin:0 0 18px}.bar{height:8px;border-radius:99px;background:#e6e1ef;overflow:hidden}.bar span{display:block;height:100%;width:36%;border-radius:inherit;background:#5b4a8a;animation:move 1s ease-in-out infinite alternate}.error{display:none;margin-top:16px;padding:10px;border-radius:8px;background:#fce8e8;color:#a72f2f;font-size:13px;white-space:pre-wrap}@keyframes move{to{transform:translateX(180%)}}
+  </style>
+</head>
+<body>
+  <main class="loader">
+    <div class="logo">🌿</div>
+    <h1>Sistemi Genit</h1>
+    <p>Po hapet sistemi…</p>
+    <div class="bar"><span></span></div>
+    <div id="error" class="error"></div>
+  </main>
+  <script type="module">
+    const errorBox = document.getElementById('error');
+    try {
+      const { XzReadableStream } = await import('https://esm.sh/xz-decompress@0.2.3');
+      const names = Array.from({ length: 8 }, (_, index) => `/html64-source/xz-${String(index).padStart(2, '0')}.b64`);
+      const chunks = await Promise.all(names.map(async (url) => {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Mungon burimi ${url} (${response.status})`);
+        return response.text();
+      }));
+      const base64 = chunks.join('').replace(/\s+/g, '');
+      const binary = atob(base64);
+      const packed = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) packed[i] = binary.charCodeAt(i);
+      const html = await new Response(new XzReadableStream(new Blob([packed]).stream())).text();
+      if (html.length < 1000000 || !html.toLowerCase().includes('<!doctype html')) {
+        throw new Error('HTML-ja e sistemit është e paplotë.');
+      }
+      document.open();
+      document.write(html);
+      document.close();
+    } catch (error) {
+      console.error(error);
+      errorBox.style.display = 'block';
+      errorBox.textContent = `Sistemi nuk u hap: ${error.message}\nRifresko faqen.`;
+    }
+  </script>
+</body>
 </html>
