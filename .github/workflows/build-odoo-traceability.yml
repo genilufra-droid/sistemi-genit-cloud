@@ -21,7 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: odoo-traceability-actions
           fetch-depth: 0
 
       - name: Validate source and production build command
