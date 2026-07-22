@@ -1,0 +1,469 @@
+2907: /* ===== traceability.js ===== */
+2908: /**
+2909:  * Sistemi Genit 6.0 — GACP-oriented end-to-end traceability for medicinal plants.
+2910:  * Farm / wild collection location -> purchase -> raw lot -> processing / packaging
+2911:  * -> finished lot -> delivery / sales invoice -> customer / recall.
+2912:  */
+2913: (function (global) {
+2914:   'use strict';
+2915: 
+2916:   var DB = global.DB;
+2917:   var C = global.Calc;
+2918:   var S = global.Services;
+2919:   if (!DB || !C || !S) throw new Error('traceability.js requires DB, Calc and Services.');
+2920: 
+2921:   function num(v) { return C.toNum(v); }
+2922:   function round2(v) { return C.round2(v); }
+2923:   function round3(v) { return C.round3(v); }
+2924:   function nowIso() { return new Date().toISOString(); }
+2925:   function clone(v) { return v == null ? v : JSON.parse(JSON.stringify(v)); }
+2926:   function actor() {
+2927:     var u = global.Auth && global.Auth.getCurrentUser ? global.Auth.getCurrentUser() : null;
+2928:     return u || { id: 'system', username: 'system', displayName: 'System' };
+2929:   }
+2930:   function requirePermission(permission) {
+2931:     if (global.Auth && global.Auth.requirePermission) global.Auth.requirePermission(permission);
+2932:   }
+2933:   function normalizeToken(value, fallback) {
+2934:     var text = String(value || '').trim().toLocaleUpperCase('sq-AL');
+2935:     text = text.normalize ? text.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : text;
+2936:     text = text.replace(/Ë/g, 'E').replace(/Ç/g, 'C');
+2937:     text = text.replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
+2938:     return text || String(fallback || 'NA');
+2939:   }
+2940:   function dateOnly(value) {
+2941:     var d = value ? new Date(value) : new Date();
+2942:     if (isNaN(d.getTime())) d = new Date();
+2943:     return d.toISOString().slice(0, 10);
+2944:   }
+2945:   function monthCode(value) { return dateOnly(value).slice(0, 7).replace('-', ''); }
+2946:   function dayCode(value) { return dateOnly(value).replace(/-/g, ''); }
+2947:   function sourceTag(value) { return String(value || '').toUpperCase() === 'WILD_COLLECTION' ? 'E' : 'K'; }
+2948:   function mapUrl(lat, lng) {
+2949:     if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return '';
+2950:     return 'https://www.openstreetmap.org/?mlat=' + Number(lat).toFixed(6) + '&mlon=' + Number(lng).toFixed(6) + '#map=16/' + Number(lat).toFixed(6) + '/' + Number(lng).toFixed(6);
+2951:   }
+2952:   function traceLocationText(x) {
+2953:     x = x || {};
+2954:     return [x.locationName, x.village, x.municipality, x.region, x.country].filter(Boolean).join(', ');
+2955:   }
+2956:   function lotAvailable(lot) { return Math.max(0, round3(num(lot && lot.quantityAvailable))); }
+2957:   function isSaleableLot(lot) {
+2958:     return !!lot && lot.status === 'AVAILABLE' && lotAvailable(lot) > 0.0001 && String(lot.qualityStatus || 'APPROVED') === 'APPROVED';
+2959:   }
+2960:   function rawLotBase(product, supplier, harvestMonth, parcelCode, sourceType) {
+2961:     var productToken = normalizeToken(product && (product.traceLotPrefix || product.code || product.name), 'BIME').slice(0, 14);
+2962:     var supplierToken = normalizeToken(supplier && (supplier.code || supplier.name), 'FERMER').slice(0, 14);
+2963:     var month = String(harvestMonth || '').replace(/[^0-9]/g, '');
+2964:     if (month.length !== 6) month = monthCode(harvestMonth || new Date());
+2965:     return [productToken, supplierToken, month, normalizeToken(parcelCode, 'ZONE').slice(0, 14), sourceTag(sourceType)].join('-');
+2966:   }
+2967:   function nextNumber(records, base, field, digits) {
+2968:     field = field || 'lotNumber'; digits = digits || 3;
+2969:     var re = new RegExp('^' + String(base).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-(\\d+)$', 'i');
+2970:     var max = 0;
+2971:     (records || []).forEach(function (x) {
+2972:       var m = String(x && x[field] || '').match(re);
+2973:       if (m) max = Math.max(max, parseInt(m[1], 10) || 0);
+2974:     });
+2975:     return base + '-' + String(max + 1).padStart(digits, '0');
+2976:   }
+2977:   function outputLotBase(product, batchDate) {
+2978:     return [normalizeToken(product && (product.traceLotPrefix || product.code || product.name), 'PROD').slice(0, 14), 'PKT', dayCode(batchDate)].join('-');
+2979:   }
+2980:   function nextBatchNumber(records, date) {
+2981:     return nextNumber(records, 'PRC-' + dayCode(date), 'batchNumber', 3);
+2982:   }
+2983:   function nextRecallNumber(records, date) {
+2984:     return nextNumber(records, 'RCL-' + dayCode(date), 'recallNumber', 3);
+2985:   }
+2986: 
+2987:   async function saveFarm(input) {
+2988:     requirePermission('masters.manage');
+2989:     input = input || {};
+2990:     if (!input.supplierId) throw new Error('Furnitori/Fermeri është i detyrueshëm.');
+2991:     if (!String(input.code || '').trim()) throw new Error('Kodi i fermës është i detyrueshëm.');
+2992:     if (!String(input.name || '').trim()) throw new Error('Emri i fermës është i detyrueshëm.');
+2993:     var existing = input.id ? await DB.get('traceFarms', input.id) : null;
+2994:     var all = await DB.getAll('traceFarms');
+2995:     var code = normalizeToken(input.code, 'FERMA');
+2996:     if (all.some(function (x) { return x.id !== input.id && normalizeToken(x.code) === code; })) throw new Error('Kodi i fermës ekziston.');
+2997:     var rec = Object.assign({}, existing || {}, input, {
+2998:       id: input.id || DB.genId('farm'), code: code, name: String(input.name).trim(),
+2999:       sourceTypeDefault: input.sourceTypeDefault === 'WILD_COLLECTION' ? 'WILD_COLLECTION' : 'CULTIVATED',
+3000:       latitude: input.latitude === '' || input.latitude == null ? null : Number(input.latitude),
+3001:       longitude: input.longitude === '' || input.longitude == null ? null : Number(input.longitude),
+3002:       altitudeM: input.altitudeM === '' || input.altitudeM == null ? null : Number(input.altitudeM),
+3003:       gpsAccuracyM: input.gpsAccuracyM === '' || input.gpsAccuracyM == null ? null : Number(input.gpsAccuracyM),
+3004:       mapUrl: mapUrl(input.latitude, input.longitude), active: existing ? existing.active !== false : true,
+3005:       createdAt: existing && existing.createdAt || nowIso(), updatedAt: nowIso(), updatedBy: actor().username
+3006:     });
+3007:     await DB.atomicTx(['traceFarms', 'auditLogs'], 'readwrite', function (stores) {
+3008:       stores.traceFarms.put(rec);
+3009:       stores.auditLogs.put(C.auditEntry('traceFarm', rec.id, existing ? 'UPDATE' : 'CREATE', existing, rec, rec.code));
+3010:     });
+3011:     return rec;
+3012:   }
+3013: 
+3014:   async function toggleFarm(id) {
+3015:     requirePermission('masters.manage');
+3016:     var rec = await DB.get('traceFarms', id);
+3017:     if (!rec) throw new Error('Ferma nuk u gjet.');
+3018:     var before = clone(rec); rec.active = rec.active === false; rec.updatedAt = nowIso(); rec.updatedBy = actor().username;
+3019:     await DB.atomicTx(['traceFarms', 'auditLogs'], 'readwrite', function (stores) {
+3020:       stores.traceFarms.put(rec);
+3021:       stores.auditLogs.put(C.auditEntry('traceFarm', rec.id, rec.active ? 'ACTIVATE' : 'ARCHIVE', before, rec, rec.code));
+3022:     });
+3023:     return rec;
+3024:   }
+3025: 
+3026:   async function saveParcel(input) {
+3027:     requirePermission('masters.manage');
+3028:     input = input || {};
+3029:     if (!input.supplierId) throw new Error('Furnitori/Fermeri është i detyrueshëm.');
+3030:     if (!input.farmId) throw new Error('Ferma/Zona është e detyrueshme.');
+3031:     if (!String(input.code || '').trim()) throw new Error('Kodi i parcelës/zonës është i detyrueshëm.');
+3032:     var existing = input.id ? await DB.get('traceParcels', input.id) : null;
+3033:     var all = await DB.getAll('traceParcels');
+3034:     var code = normalizeToken(input.code, 'PARCELA');
+3035:     if (all.some(function (x) { return x.id !== input.id && x.farmId === input.farmId && normalizeToken(x.code) === code; })) throw new Error('Kjo parcelë/zonë ekziston në fermën e zgjedhur.');
+3036:     var rec = Object.assign({}, existing || {}, input, {
+3037:       id: input.id || DB.genId('parcel'), code: code, name: String(input.name || input.code || '').trim(),
+3038:       sourceType: input.sourceType === 'WILD_COLLECTION' ? 'WILD_COLLECTION' : 'CULTIVATED',
+3039:       latitude: input.latitude === '' || input.latitude == null ? null : Number(input.latitude),
+3040:       longitude: input.longitude === '' || input.longitude == null ? null : Number(input.longitude),
+3041:       altitudeM: input.altitudeM === '' || input.altitudeM == null ? null : Number(input.altitudeM),
+3042:       gpsAccuracyM: input.gpsAccuracyM === '' || input.gpsAccuracyM == null ? null : Number(input.gpsAccuracyM),
+3043:       areaHa: input.areaHa === '' || input.areaHa == null ? null : Number(input.areaHa),
+3044:       mapUrl: mapUrl(input.latitude, input.longitude), active: existing ? existing.active !== false : true,
+3045:       createdAt: existing && existing.createdAt || nowIso(), updatedAt: nowIso(), updatedBy: actor().username
+3046:     });
+3047:     await DB.atomicTx(['traceParcels', 'auditLogs'], 'readwrite', function (stores) {
+3048:       stores.traceParcels.put(rec);
+3049:       stores.auditLogs.put(C.auditEntry('traceParcel', rec.id, existing ? 'UPDATE' : 'CREATE', existing, rec, rec.code));
+3050:     });
+3051:     return rec;
+3052:   }
+3053: 
+3054:   async function toggleParcel(id) {
+3055:     requirePermission('masters.manage');
+3056:     var rec = await DB.get('traceParcels', id);
+3057:     if (!rec) throw new Error('Parcela/Zona nuk u gjet.');
+3058:     var before = clone(rec); rec.active = rec.active === false; rec.updatedAt = nowIso(); rec.updatedBy = actor().username;
+3059:     await DB.atomicTx(['traceParcels', 'auditLogs'], 'readwrite', function (stores) {
+3060:       stores.traceParcels.put(rec);
+3061:       stores.auditLogs.put(C.auditEntry('traceParcel', rec.id, rec.active ? 'ACTIVATE' : 'ARCHIVE', before, rec, rec.code));
+3062:     });
+3063:     return rec;
+3064:   }
+3065: 
+3066:   async function saveFieldActivity(input) {
+3067:     requirePermission('masters.manage');
+3068:     input = input || {};
+3069:     if (!input.parcelId) throw new Error('Parcela/Zona është e detyrueshme.');
+3070:     if (!input.activityType) throw new Error('Lloji i aktivitetit është i detyrueshëm.');
+3071:     var existing = input.id ? await DB.get('traceFieldActivities', input.id) : null;
+3072:     var rec = Object.assign({}, existing || {}, input, {
+3073:       id: input.id || DB.genId('field'), date: input.date || nowIso(),
+3074:       preHarvestIntervalDays: Math.max(0, parseInt(input.preHarvestIntervalDays, 10) || 0),
+3075:       createdAt: existing && existing.createdAt || nowIso(), updatedAt: nowIso(), updatedBy: actor().username
+3076:     });
+3077:     await DB.atomicTx(['traceFieldActivities', 'auditLogs'], 'readwrite', function (stores) {
+3078:       stores.traceFieldActivities.put(rec);
+3079:       stores.auditLogs.put(C.auditEntry('traceFieldActivity', rec.id, existing ? 'UPDATE' : 'CREATE', existing, rec, rec.activityType));
+3080:     });
+3081:     return rec;
+3082:   }
+3083: 
+3084:   async function availableLots(productId, warehouseId) {
+3085:     var lots = await DB.getByIndex('lots', 'productId', productId);
+3086:     return lots.filter(function (lot) {
+3087:       return isSaleableLot(lot) && (!warehouseId || !lot.warehouseId || lot.warehouseId === warehouseId);
+3088:     }).sort(function (a, b) {
+3089:       var ae = a.expiryDate ? new Date(a.expiryDate).getTime() : Number.MAX_SAFE_INTEGER;
+3090:       var be = b.expiryDate ? new Date(b.expiryDate).getTime() : Number.MAX_SAFE_INTEGER;
+3091:       if (ae !== be) return ae - be;
+3092:       var ad = new Date(a.productionDate || a.harvestDate || a.sourceDate || a.createdAt || 0).getTime();
+3093:       var bd = new Date(b.productionDate || b.harvestDate || b.sourceDate || b.createdAt || 0).getTime();
+3094:       return ad - bd || String(a.lotNumber).localeCompare(String(b.lotNumber), 'sq');
+3095:     });
+3096:   }
+3097: 
+3098:   function sourceSnapshot(source) {
+3099:     source = source || {};
+3100:     return {
+3101:       sourceType: source.traceSourceType || source.sourceType || 'CULTIVATED',
+3102:       farmId: source.traceFarmId || source.farmId || '', farmCode: source.traceFarmCode || source.farmCode || '', farmName: source.traceFarmName || source.farmName || '',
+3103:       parcelId: source.traceParcelId || source.parcelId || '', parcelCode: source.traceParcelCode || source.parcelCode || '', parcelName: source.traceParcelName || source.parcelName || '',
+3104:       country: source.traceCountry || source.country || 'Shqipëri', region: source.traceRegion || source.region || '', municipality: source.traceMunicipality || source.municipality || '', village: source.traceVillage || source.village || '',
+3105:       locationName: source.traceLocationName || source.locationName || '', latitude: source.traceLatitude != null ? source.traceLatitude : source.latitude,
+3106:       longitude: source.traceLongitude != null ? source.traceLongitude : source.longitude, altitudeM: source.traceAltitudeM != null ? source.traceAltitudeM : source.altitudeM,
+3107:       gpsAccuracyM: source.traceGpsAccuracyM != null ? source.traceGpsAccuracyM : source.gpsAccuracyM,
+3108:       botanicalName: source.traceBotanicalName || source.botanicalName || '', localPlantName: source.traceLocalPlantName || source.localPlantName || '', plantPart: source.tracePlantPart || source.plantPart || '',
+3109:       harvestDate: source.traceHarvestDate || source.harvestDate || source.date || '', collectorName: source.traceCollectorName || source.collectorName || '',
+3110:       vehiclePlate: source.traceVehiclePlate || source.vehiclePlate || '', arrivalTime: source.traceArrivalTime || source.arrivalTime || '',
+3111:       organicStatus: source.traceOrganicStatus || source.organicStatus || '', certificateNumber: source.traceCertificateNumber || source.certificateNumber || '',
+3112:       qualityStatus: source.traceQualityStatus || source.qualityStatus || 'APPROVED', notes: source.traceNotes || source.notes || ''
+3113:     };
+3114:   }
+3115: 
+3116:   async function buildPurchaseLotPlans(invoice, lines, wf, supplier, products) {
+3117:     var allLots = await DB.getAll('lots');
+3118:     var plans = [];
+3119:     var source = sourceSnapshot(Object.assign({}, invoice || {}, wf || {}));
+3120:     for (var i = 0; i < lines.length; i++) {
+3121:       var line = lines[i];
+3122:       var product = products[line.productId] || await DB.get('products', line.productId);
+3123:       if (!product) throw new Error('Artikulli nuk u gjet për lotin e blerjes.');
+3124:       var traceRequired = product.traceabilityEnabled === true || !!(wf && wf.traceabilityEnabled) || !!invoice.traceabilityEnabled;
+3125:       if (!traceRequired) continue;
+3126:       var lineSource = sourceSnapshot(Object.assign({}, source, line || {}));
+3127:       if (!lineSource.farmId && !lineSource.farmName) throw new Error('Zgjidh Fermën/Zonën e origjinës për ' + product.name + '.');
+3128:       if (!lineSource.parcelId && !lineSource.parcelCode) throw new Error('Zgjidh Parcelën/Zonën e mbledhjes për ' + product.name + '.');
+3129:       if (!lineSource.locationName && (!Number.isFinite(Number(lineSource.latitude)) || !Number.isFinite(Number(lineSource.longitude)))) throw new Error('Vendos lokacionin e origjinës ose koordinatat GPS për ' + product.name + '.');
+3130:       var harvestMonth = invoice.traceHarvestMonth || wf && wf.traceHarvestMonth || monthCode(lineSource.harvestDate || invoice.date);
+3131:       var base = rawLotBase(product, supplier, harvestMonth, lineSource.parcelCode, lineSource.sourceType);
+3132:       var lotNumber = nextNumber(allLots.concat(plans.map(function (x) { return x.lot; })), base, 'lotNumber', 3);
+3133:       var qty = C.calcStockMovement(line.quantity, line.freeQty || 0, line.coefficient || 1);
+3134:       if (qty <= 0) throw new Error('Sasia e lotit duhet të jetë më e madhe se zero.');
+3135:       var lotId = DB.genId('lot');
+3136:       var status = lineSource.qualityStatus === 'APPROVED' ? 'AVAILABLE' : (lineSource.qualityStatus === 'REJECTED' ? 'BLOCKED' : 'QUARANTINE');
+3137:       var lot = Object.assign({
+3138:         id: lotId, lotNumber: lotNumber, lotType: 'RAW', status: status,
+3139:         qualityStatus: lineSource.qualityStatus || 'APPROVED', productId: product.id, productName: product.name,
+3140:         supplierId: invoice.supplierId, supplierName: supplier.name, sourceDocType: 'purchaseInvoice', sourceDocId: invoice.id, sourceDocNumber: invoice.docNumber,
+3141:         weightFormId: invoice.weightFormId || '', weightFormNumber: invoice.weightFormNumber || '', warehouseId: invoice.warehouseId || '',
+3142:         sourceDate: invoice.date, productionDate: invoice.date, harvestMonth: String(harvestMonth).replace(/[^0-9]/g, '').slice(0, 6),
+3143:         quantityCreated: round3(qty), quantityAvailable: round3(qty), quantityConsumed: 0, baseUnit: product.baseUnit || line.unit || 'kg',
+3144:         bagCount: num(wf && wf.totalBagCount), netWeightKg: round3(qty), mapUrl: mapUrl(lineSource.latitude, lineSource.longitude),
+3145:         locationText: traceLocationText(lineSource), createdAt: nowIso(), createdBy: actor().username
+3146:       }, lineSource);
+3147:       plans.push({
+3148:         line: line, lot: lot,
+3149:         movement: { id: DB.genId('lm'), lotId: lotId, lotNumber: lotNumber, productId: product.id, movementType: 'PURCHASE_IN', quantity: round3(qty), balanceAfter: round3(qty), sourceDocType: 'purchaseInvoice', sourceDocId: invoice.id, sourceDocNumber: invoice.docNumber, supplierId: invoice.supplierId, farmId: lineSource.farmId, parcelId: lineSource.parcelId, warehouseId: invoice.warehouseId || '', timestamp: nowIso(), createdBy: actor().username }
+3150:       });
+3151:     }
+3152:     return plans;
+3153:   }
+3154: 
+3155:   async function planSaleAllocations(lines, warehouseId) {
+3156:     var products = await DB.getAll('products');
+3157:     var productMap = {}; products.forEach(function (p) { productMap[p.id] = p; });
+3158:     var lots = await DB.getAll('lots');
+3159:     var remaining = {}; lots.forEach(function (lot) { remaining[lot.id] = lotAvailable(lot); });
+3160:     var allocations = [];
+3161:     for (var i = 0; i < lines.length; i++) {
+3162:       var line = lines[i], product = productMap[line.productId];
+3163:       if (!product) throw new Error('Artikulli nuk u gjet gjatë alokimit të lotit.');
+3164:       var need = round3(C.calcStockMovement(line.quantity, line.freeQty || 0, line.coefficient || 1));
+3165:       var candidates = lots.filter(function (lot) {
+3166:         return lot.productId === line.productId && isSaleableLot(lot) && remaining[lot.id] > 0.0001 && (!warehouseId || !lot.warehouseId || lot.warehouseId === warehouseId);
+3167:       }).sort(function (a, b) {
+3168:         if (line.lotId) { if (a.id === line.lotId) return -1; if (b.id === line.lotId) return 1; }
+3169:         var ae = a.expiryDate ? new Date(a.expiryDate).getTime() : Number.MAX_SAFE_INTEGER;
+3170:         var be = b.expiryDate ? new Date(b.expiryDate).getTime() : Number.MAX_SAFE_INTEGER;
+3171:         if (ae !== be) return ae - be;
+3172:         return new Date(a.productionDate || a.harvestDate || a.sourceDate || a.createdAt || 0) - new Date(b.productionDate || b.harvestDate || b.sourceDate || b.createdAt || 0);
+3173:       });
+3174:       var traceRequired = product.traceabilityEnabled === true || candidates.length > 0;
+3175:       if (!traceRequired) continue;
+3176:       if (line.lotId) candidates = candidates.filter(function (lot) { return lot.id === line.lotId; });
+3177:       var left = need;
+3178:       for (var c = 0; c < candidates.length && left > 0.0001; c++) {
+3179:         var lot = candidates[c], take = round3(Math.min(left, remaining[lot.id]));
+3180:         if (take <= 0) continue;
+3181:         allocations.push({ lineId: line.id || '', lineIndex: i, productId: line.productId, lotId: lot.id, lotNumber: lot.lotNumber, quantity: take });
+3182:         remaining[lot.id] = round3(remaining[lot.id] - take); left = round3(left - take);
+3183:       }
+3184:       if (left > 0.0001) throw new Error('Sasi loti e pamjaftueshme ose loti është në karantinë për ' + product.name + '. Mungojnë ' + left + ' ' + (product.baseUnit || '') + '.');
+3185:     }
+3186:     return allocations;
+3187:   }
+3188: 
+3189:   async function saveQualityCheck(input) {
+3190:     requirePermission('documents.create');
+3191:     input = input || {};
+3192:     if (!input.lotId && !input.weightFormId && !input.purchaseInvoiceId) throw new Error('Kontrolli duhet të lidhet me një lot ose dokument blerjeje.');
+3193:     var existing = input.id ? await DB.get('traceQualityChecks', input.id) : null;
+3194:     var status = ['APPROVED', 'QUARANTINE', 'REJECTED'].indexOf(input.status) >= 0 ? input.status : 'QUARANTINE';
+3195:     var rec = Object.assign({}, existing || {}, input, {
+3196:       id: input.id || DB.genId('qc'), status: status, checkDate: input.checkDate || nowIso(),
+3197:       moisturePct: input.moisturePct === '' || input.moisturePct == null ? null : Number(input.moisturePct),
+3198:       foreignMatterPct: input.foreignMatterPct === '' || input.foreignMatterPct == null ? null : Number(input.foreignMatterPct),
+3199:       temperatureC: input.temperatureC === '' || input.temperatureC == null ? null : Number(input.temperatureC),
+3200:       createdAt: existing && existing.createdAt || nowIso(), updatedAt: nowIso(), checkedBy: input.checkedBy || actor().displayName, updatedBy: actor().username
+3201:     });
+3202:     var lot = rec.lotId ? await DB.get('lots', rec.lotId) : null;
+3203:     var stores = ['traceQualityChecks', 'auditLogs']; if (lot) stores.push('lots');
+3204:     await DB.atomicTx(stores, 'readwrite', function (tx) {
+3205:       tx.traceQualityChecks.put(rec);
+3206:       if (lot) {
+3207:         lot.qualityStatus = status; lot.status = status === 'APPROVED' ? (lotAvailable(lot) > 0 ? 'AVAILABLE' : 'DEPLETED') : (status === 'REJECTED' ? 'BLOCKED' : 'QUARANTINE'); lot.updatedAt = nowIso(); tx.lots.put(lot);
+3208:       }
+3209:       tx.auditLogs.put(C.auditEntry('traceQualityCheck', rec.id, existing ? 'UPDATE' : 'CREATE', existing, rec, rec.status));
+3210:     });
+3211:     return rec;
+3212:   }
+3213: 
+3214:   async function saveProcessBatch(input) {
+3215:     requirePermission('documents.create');
+3216:     input = input || {};
+3217:     if (!input.outputProductId) throw new Error('Produkti përfundimtar është i detyrueshëm.');
+3218:     if (!input.warehouseId) throw new Error('Magazina është e detyrueshme.');
+3219:     if (num(input.outputQuantity) <= 0) throw new Error('Sasia e prodhuar duhet të jetë më e madhe se zero.');
+3220:     var validInputs = (input.inputs || []).filter(function (x) { return x.lotId && num(x.quantity) > 0; });
+3221:     if (!validInputs.length) throw new Error('Zgjidh të paktën një lot hyrës.');
+3222:     var inputTotal = round3(validInputs.reduce(function (s, x) { return s + num(x.quantity); }, 0));
+3223:     var wasteQty = round3(num(input.wasteQuantity));
+3224:     var processLoss = round3(inputTotal - num(input.outputQuantity) - wasteQty);
+3225:     if (processLoss < -0.001) throw new Error('Dalja + mbetjet nuk mund të tejkalojnë hyrjen totale.');
+3226:     var existing = input.id ? await DB.get('processBatches', input.id) : null;
+3227:     if (existing && existing.status !== 'DRAFT') throw new Error('Procesi i postuar/anulluar nuk mund të editohet.');
+3228:     var all = await DB.getAll('processBatches');
+3229:     var id = input.id || DB.genId('batch');
+3230:     var oldInputs = existing ? await DB.getByIndex('processBatchInputs', 'batchId', id) : [];
+3231:     var now = nowIso();
+3232:     var rec = Object.assign({}, existing || {}, input, {
+3233:       id: id, batchNumber: existing && existing.batchNumber || input.batchNumber || nextBatchNumber(all, input.date || now), status: 'DRAFT',
+3234:       date: input.date || now, processType: input.processType || 'PACKAGING', outputQuantity: round3(input.outputQuantity), inputQuantity: inputTotal,
+3235:       wasteQuantity: wasteQty, processLossQuantity: Math.max(0, processLoss), yieldPct: inputTotal > 0 ? round2(num(input.outputQuantity) / inputTotal * 100) : 0,
+3236:       qualityStatus: input.qualityStatus || 'APPROVED', createdAt: existing && existing.createdAt || now, updatedAt: now,
+3237:       createdBy: existing && existing.createdBy || actor().username, updatedBy: actor().username
+3238:     });
+3239:     var lines = validInputs.map(function (x, idx) {
+3240:       return { id: x.id || DB.genId('binput'), batchId: id, seq: idx + 1, lotId: x.lotId, lotNumber: x.lotNumber || '', productId: x.productId || '', productName: x.productName || '', quantity: round3(x.quantity), createdAt: x.createdAt || now, updatedAt: now };
+3241:     });
+3242:     await DB.atomicTx(['processBatches', 'processBatchInputs', 'auditLogs'], 'readwrite', function (stores) {
+3243:       stores.processBatches.put(rec); oldInputs.forEach(function (x) { stores.processBatchInputs.delete(x.id); }); lines.forEach(function (x) { stores.processBatchInputs.put(x); });
+3244:       stores.auditLogs.put(C.auditEntry('processBatch', rec.id, existing ? 'UPDATE' : 'CREATE', existing, rec, rec.batchNumber));
+3245:     });
+3246:     rec.inputs = lines; return rec;
+3247:   }
+3248: 
+3249:   async function postProcessBatch(batchId) {
+3250:     requirePermission('documents.post');
+3251:     var batch = await DB.get('processBatches', batchId);
+3252:     if (!batch) throw new Error('Procesi nuk u gjet.');
+3253:     if (batch.status === 'POSTED') throw new Error('Procesi është tashmë i postuar.');
+3254:     if (batch.status === 'CANCELLED') throw new Error('Procesi i anulluar nuk mund të postohet.');
+3255:     var postingKey = 'PROCESS_POST:' + batch.id;
+3256:     if (await DB.get('postingKeys', postingKey)) throw new Error('Procesi është tashmë i postuar.');
+3257:     var inputs = await DB.getByIndex('processBatchInputs', 'batchId', batch.id);
+3258:     if (!inputs.length) throw new Error('Procesi nuk ka lote hyrëse.');
+3259:     var outputProduct = await DB.get('products', batch.outputProductId);
+3260:     if (!outputProduct) throw new Error('Produkti përfundimtar nuk u gjet.');
+3261:     var inputLots = {}, inputProducts = {}, totalInputCost = 0;
+3262:     for (var i = 0; i < inputs.length; i++) {
+3263:       var lot = await DB.get('lots', inputs[i].lotId);
+3264:       if (!isSaleableLot(lot)) throw new Error('Loti hyrës nuk është i disponueshëm/aprovuar: ' + (inputs[i].lotNumber || inputs[i].lotId));
+3265:       if (lotAvailable(lot) + 0.0001 < num(inputs[i].quantity)) throw new Error('Loti ' + lot.lotNumber + ' nuk ka sasi të mjaftueshme.');
+3266:       var p = await DB.get('products', lot.productId);
+3267:       if (!p || num(p.stock) + 0.0001 < num(inputs[i].quantity)) throw new Error('Stoku i artikullit ' + (p && p.name || lot.productName) + ' nuk lejon procesin.');
+3268:       inputLots[lot.id] = lot; inputProducts[p.id] = p; totalInputCost += num(inputs[i].quantity) * num(p.avgPrice || p.lastPrice);
+3269:     }
+3270:     var allLots = await DB.getAll('lots');
+3271:     var outputNumber = batch.outputLotNumber || nextNumber(allLots, outputLotBase(outputProduct, batch.date), 'lotNumber', 3);
+3272:     var outputLotId = DB.genId('lot'), outputQty = round3(batch.outputQuantity), now = nowIso(), before = clone(batch);
+3273:     var outputUnitCost = outputQty > 0 ? round2((totalInputCost + num(batch.extraCost)) / outputQty) : 0;
+3274:     var oldOutputStock = num(outputProduct.stock), newOutputStock = round3(oldOutputStock + outputQty);
+3275:     var newOutputAvg = C.calcWeightedAvgPrice(oldOutputStock, num(outputProduct.avgPrice), outputQty, outputUnitCost);
+3276:     await DB.atomicTx(['processBatches', 'processBatchInputs', 'lots', 'lotMovements', 'products', 'stockMovements', 'productCards', 'priceHistory', 'postingKeys', 'auditLogs'], 'readwrite', function (stores) {
+3277:       inputs.forEach(function (line) {
+3278:         var lot = inputLots[line.lotId], p = inputProducts[lot.productId], qty = round3(line.quantity);
+3279:         lot.quantityAvailable = round3(lotAvailable(lot) - qty); lot.quantityConsumed = round3(num(lot.quantityConsumed) + qty); lot.status = lot.quantityAvailable <= 0.0001 ? 'DEPLETED' : 'AVAILABLE'; lot.updatedAt = now; stores.lots.put(lot);
+3280:         p.stock = round3(num(p.stock) - qty); p.updatedAt = now; stores.products.put(p);
+3281:         stores.lotMovements.put({ id: DB.genId('lm'), lotId: lot.id, lotNumber: lot.lotNumber, productId: lot.productId, movementType: 'PROCESS_CONSUME', quantity: -qty, balanceAfter: lot.quantityAvailable, sourceDocType: 'processBatch', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, batchId: batch.id, warehouseId: batch.warehouseId, timestamp: now, createdBy: actor().username });
+3282:         stores.stockMovements.put({ id: DB.genId('sm'), productId: lot.productId, warehouseId: batch.warehouseId, movementType: 'OUT_PROCESS', sourceDocType: 'processBatch', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, quantity: -qty, baseUnitQuantity: -qty, unit: p.baseUnit || lot.baseUnit, value: -round2(qty * num(p.avgPrice)), timestamp: now, lotId: lot.id, lotNumber: lot.lotNumber });
+3283:         stores.productCards.put({ id: DB.genId('pc'), productId: lot.productId, sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, type: 'PROCESS_CONSUME', date: batch.date, quantityIn: 0, quantityOut: qty, balance: p.stock, value: -round2(qty * num(p.avgPrice)), timestamp: now, lotId: lot.id, lotNumber: lot.lotNumber });
+3284:       });
+3285:       outputProduct.stock = newOutputStock; outputProduct.avgPrice = newOutputAvg; outputProduct.lastPrice = outputUnitCost; outputProduct.updatedAt = now; stores.products.put(outputProduct);
+3286:       var outputStatus = batch.qualityStatus === 'APPROVED' ? 'AVAILABLE' : (batch.qualityStatus === 'REJECTED' ? 'BLOCKED' : 'QUARANTINE');
+3287:       var outputLot = { id: outputLotId, lotNumber: outputNumber, lotType: batch.processType === 'PACKAGING' ? 'PACKAGED' : 'PROCESSED', status: outputStatus, qualityStatus: batch.qualityStatus || 'APPROVED', productId: outputProduct.id, productName: outputProduct.name, warehouseId: batch.warehouseId, outputBatchId: batch.id, outputBatchNumber: batch.batchNumber, productionDate: batch.date, sourceDate: batch.date, expiryDate: batch.expiryDate || '', packagingType: batch.packagingType || '', packageWeight: num(batch.packageWeight), packageCount: num(batch.packageCount), dryingMethod: batch.dryingMethod || '', dryingTemperatureC: batch.dryingTemperatureC, dryingDurationHours: batch.dryingDurationHours, moistureAfterPct: batch.moistureAfterPct, quantityCreated: outputQty, quantityAvailable: outputQty, quantityConsumed: 0, baseUnit: outputProduct.baseUnit || 'kg', unitCost: outputUnitCost, createdAt: now, createdBy: actor().username };
+3288:       stores.lots.put(outputLot);
+3289:       stores.lotMovements.put({ id: DB.genId('lm'), lotId: outputLotId, lotNumber: outputNumber, productId: outputProduct.id, movementType: 'PROCESS_OUTPUT', quantity: outputQty, balanceAfter: outputQty, sourceDocType: 'processBatch', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, batchId: batch.id, warehouseId: batch.warehouseId, timestamp: now, createdBy: actor().username });
+3290:       stores.stockMovements.put({ id: DB.genId('sm'), productId: outputProduct.id, warehouseId: batch.warehouseId, movementType: 'IN_PROCESS', sourceDocType: 'processBatch', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, quantity: outputQty, baseUnitQuantity: outputQty, unit: outputProduct.baseUnit || 'kg', unitCost: outputUnitCost, value: round2(outputQty * outputUnitCost), timestamp: now, lotId: outputLotId, lotNumber: outputNumber });
+3291:       stores.productCards.put({ id: DB.genId('pc'), productId: outputProduct.id, sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, type: 'PROCESS_OUTPUT', date: batch.date, quantityIn: outputQty, quantityOut: 0, balance: outputProduct.stock, unitCost: outputUnitCost, value: round2(outputQty * outputUnitCost), timestamp: now, lotId: outputLotId, lotNumber: outputNumber });
+3292:       stores.priceHistory.put({ id: DB.genId('ph'), productId: outputProduct.id, sourceDocId: batch.id, docNumber: batch.batchNumber, date: batch.date, price: outputUnitCost, quantity: outputQty, priceType: 'PROCESS_COST', timestamp: now });
+3293:       batch.status = 'POSTED'; batch.outputLotId = outputLotId; batch.outputLotNumber = outputNumber; batch.outputUnitCost = outputUnitCost; batch.postedAt = now; batch.postedBy = actor().username; batch.updatedAt = now; stores.processBatches.put(batch);
+3294:       stores.postingKeys.put({ id: postingKey, documentId: batch.id, type: 'PROCESS_POST', createdAt: now });
+3295:       stores.auditLogs.put(C.auditEntry('processBatch', batch.id, 'POST_ATOMIC', before, batch, batch.batchNumber));
+3296:     });
+3297:     batch.inputs = inputs; return batch;
+3298:   }
+3299: 
+3300:   async function cancelProcessBatch(batchId, reason) {
+3301:     requirePermission('documents.cancel');
+3302:     var batch = await DB.get('processBatches', batchId);
+3303:     if (!batch) throw new Error('Procesi nuk u gjet.');
+3304:     if (batch.status !== 'POSTED') throw new Error('Vetëm procesi i postuar mund të anullohet.');
+3305:     var outputLot = await DB.get('lots', batch.outputLotId);
+3306:     if (!outputLot) throw new Error('Loti përfundimtar nuk u gjet.');
+3307:     if (Math.abs(lotAvailable(outputLot) - num(outputLot.quantityCreated)) > 0.0001) throw new Error('Loti përfundimtar është përdorur ose shitur; procesi nuk mund të anullohet.');
+3308:     var inputs = await DB.getByIndex('processBatchInputs', 'batchId', batch.id), inputLots = {}, products = {};
+3309:     var outputProduct = await DB.get('products', batch.outputProductId);
+3310:     if (!outputProduct || num(outputProduct.stock) + 0.0001 < num(outputLot.quantityCreated)) throw new Error('Stoku përfundimtar nuk lejon anullimin.');
+3311:     products[outputProduct.id] = outputProduct;
+3312:     for (var i = 0; i < inputs.length; i++) { var lot = await DB.get('lots', inputs[i].lotId), p = lot && await DB.get('products', lot.productId); if (!lot || !p) throw new Error('Loti/artikulli hyrës mungon.'); inputLots[lot.id] = lot; products[p.id] = p; }
+3313:     var now = nowIso(), before = clone(batch);
+3314:     await DB.atomicTx(['processBatches', 'lots', 'lotMovements', 'products', 'stockMovements', 'productCards', 'auditLogs'], 'readwrite', function (stores) {
+3315:       inputs.forEach(function (line) {
+3316:         var lot = inputLots[line.lotId], p = products[lot.productId], qty = round3(line.quantity);
+3317:         lot.quantityAvailable = round3(lotAvailable(lot) + qty); lot.quantityConsumed = round3(Math.max(0, num(lot.quantityConsumed) - qty)); lot.status = lot.qualityStatus === 'APPROVED' ? 'AVAILABLE' : 'QUARANTINE'; lot.updatedAt = now; stores.lots.put(lot);
+3318:         p.stock = round3(num(p.stock) + qty); p.updatedAt = now; stores.products.put(p);
+3319:         stores.lotMovements.put({ id: DB.genId('lm'), lotId: lot.id, lotNumber: lot.lotNumber, productId: lot.productId, movementType: 'PROCESS_CANCEL_RESTORE', quantity: qty, balanceAfter: lot.quantityAvailable, sourceDocType: 'processBatchCancellation', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, batchId: batch.id, timestamp: now });
+3320:         stores.stockMovements.put({ id: DB.genId('sm'), productId: p.id, warehouseId: batch.warehouseId, movementType: 'IN_PROCESS_REVERSAL', sourceDocType: 'processBatchCancellation', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, quantity: qty, baseUnitQuantity: qty, unit: p.baseUnit, timestamp: now, lotId: lot.id, lotNumber: lot.lotNumber });
+3321:         stores.productCards.put({ id: DB.genId('pc'), productId: p.id, sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, type: 'PROCESS_CANCEL_RESTORE', date: now, quantityIn: qty, quantityOut: 0, balance: p.stock, timestamp: now, lotId: lot.id, lotNumber: lot.lotNumber });
+3322:       });
+3323:       outputProduct.stock = round3(num(outputProduct.stock) - num(outputLot.quantityCreated)); outputProduct.updatedAt = now; stores.products.put(outputProduct);
+3324:       outputLot.quantityAvailable = 0; outputLot.quantityConsumed = round3(num(outputLot.quantityCreated)); outputLot.status = 'CANCELLED'; outputLot.updatedAt = now; stores.lots.put(outputLot);
+3325:       stores.lotMovements.put({ id: DB.genId('lm'), lotId: outputLot.id, lotNumber: outputLot.lotNumber, productId: outputLot.productId, movementType: 'PROCESS_OUTPUT_CANCEL', quantity: -num(outputLot.quantityCreated), balanceAfter: 0, sourceDocType: 'processBatchCancellation', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, batchId: batch.id, timestamp: now });
+3326:       stores.stockMovements.put({ id: DB.genId('sm'), productId: outputProduct.id, warehouseId: batch.warehouseId, movementType: 'OUT_PROCESS_REVERSAL', sourceDocType: 'processBatchCancellation', sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, quantity: -num(outputLot.quantityCreated), baseUnitQuantity: -num(outputLot.quantityCreated), unit: outputProduct.baseUnit, timestamp: now, lotId: outputLot.id, lotNumber: outputLot.lotNumber });
+3327:       stores.productCards.put({ id: DB.genId('pc'), productId: outputProduct.id, sourceDocId: batch.id, sourceDocNumber: batch.batchNumber, type: 'PROCESS_OUTPUT_CANCEL', date: now, quantityIn: 0, quantityOut: num(outputLot.quantityCreated), balance: outputProduct.stock, timestamp: now, lotId: outputLot.id, lotNumber: outputLot.lotNumber });
+3328:       batch.status = 'CANCELLED'; batch.cancelledAt = now; batch.cancellationReason = reason || 'Anullim nga përdoruesi'; batch.updatedAt = now; stores.processBatches.put(batch);
+3329:       stores.auditLogs.put(C.auditEntry('processBatch', batch.id, 'CANCEL_ATOMIC', before, batch, batch.batchNumber));
+3330:     });
+3331:     return batch;
+3332:   }
+3333: 
+3334:   async function traceLot(lotId) {
+3335:     var lots = await DB.getAll('lots'), lotMap = {}; lots.forEach(function (x) { lotMap[x.id] = x; });
+3336:     var batches = await DB.getAll('processBatches'), inputs = await DB.getAll('processBatchInputs'), allMoves = await DB.getAll('lotMovements');
+3337:     var lot = lotMap[lotId]; if (!lot) throw new Error('Loti nuk u gjet.');
+3338:     function ancestors(id, seen) { seen = seen || {}; if (seen[id]) return []; seen[id] = true; var l = lotMap[id], out = []; if (l && l.outputBatchId) { inputs.filter(function (x) { return x.batchId === l.outputBatchId; }).forEach(function (x) { var il = lotMap[x.lotId]; if (il) { out.push(il); out = out.concat(ancestors(il.id, seen)); } }); } return out; }
+3339:     function descendants(id, seen) { seen = seen || {}; if (seen[id]) return []; seen[id] = true; var out = []; inputs.filter(function (x) { return x.lotId === id; }).forEach(function (x) { var b = batches.find(function (y) { return y.id === x.batchId; }), ol = b && lotMap[b.outputLotId]; if (ol) { out.push(ol); out = out.concat(descendants(ol.id, seen)); } }); return out; }
+3340:     var ancestorLots = ancestors(lotId), descendantLots = descendants(lotId), chainIds = [lotId].concat(descendantLots.map(function (x) { return x.id; }));
+3341:     var sales = allMoves.filter(function (x) { return chainIds.indexOf(x.lotId) >= 0 && x.movementType === 'SALE_OUT'; });
+3342:     var qualityChecks = (await DB.getAll('traceQualityChecks')).filter(function (x) { return x.lotId === lotId || chainIds.indexOf(x.lotId) >= 0; });
+3343:     var recallCases = (await DB.getAll('traceRecallCases')).filter(function (x) { return x.lotId === lotId || chainIds.indexOf(x.lotId) >= 0; });
+3344:     return { lot: lot, ancestors: ancestorLots, descendants: descendantLots, movements: allMoves.filter(function (x) { return x.lotId === lotId; }).sort(function (a, b) { return new Date(a.timestamp) - new Date(b.timestamp); }), sales: sales, batches: batches, inputs: inputs, lots: lots, qualityChecks: qualityChecks, recallCases: recallCases };
+3345:   }
+3346: 
+3347:   async function createRecallCase(input) {
+3348:     requirePermission('documents.cancel');
+3349:     input = input || {};
+3350:     if (!input.lotId) throw new Error('Zgjidh lotin për tërheqje.');
+3351:     var trace = await traceLot(input.lotId), all = await DB.getAll('traceRecallCases'), now = nowIso();
+3352:     var rec = { id: DB.genId('recall'), recallNumber: nextRecallNumber(all, now), recallType: input.recallType === 'REAL' ? 'REAL' : 'MOCK', lotId: input.lotId, lotNumber: trace.lot.lotNumber, status: 'OPEN', severity: input.severity || 'MEDIUM', reason: String(input.reason || '').trim(), initiatedAt: now, initiatedBy: actor().username, notes: input.notes || '', createdAt: now, updatedAt: now };
+3353:     var salesInvoices = await DB.getAll('salesInvoices'), customers = await DB.getAll('customers'), customerMap = {}, invoiceMap = {};
+3354:     customers.forEach(function (x) { customerMap[x.id] = x; }); salesInvoices.forEach(function (x) { invoiceMap[x.id] = x; });
+3355:     var grouped = {};
+3356:     trace.sales.forEach(function (m) { var key = m.sourceDocId + ':' + m.customerId + ':' + m.lotId; if (!grouped[key]) grouped[key] = { quantity: 0, move: m }; grouped[key].quantity += Math.abs(num(m.quantity)); });
+3357:     var items = Object.keys(grouped).map(function (key) { var g = grouped[key], inv = invoiceMap[g.move.sourceDocId] || {}, cust = customerMap[g.move.customerId] || {}; return { id: DB.genId('rci'), recallId: rec.id, lotId: g.move.lotId, lotNumber: g.move.lotNumber, salesInvoiceId: g.move.sourceDocId, salesInvoiceNumber: g.move.sourceDocNumber || inv.docNumber || '', customerId: g.move.customerId || inv.customerId || '', customerName: cust.name || inv.customerName || '', quantitySold: round3(g.quantity), quantityReturned: 0, status: 'TO_CONTACT', createdAt: now }; });
+3358:     await DB.atomicTx(['traceRecallCases', 'traceRecallItems', 'auditLogs'], 'readwrite', function (stores) { stores.traceRecallCases.put(rec); items.forEach(function (x) { stores.traceRecallItems.put(x); }); stores.auditLogs.put(C.auditEntry('traceRecallCase', rec.id, 'OPEN', null, rec, rec.recallNumber)); });
+3359:     rec.items = items; return rec;
+3360:   }
+3361: 
+3362:   async function updateRecallItem(id, patch) {
+3363:     requirePermission('documents.cancel');
+3364:     var rec = await DB.get('traceRecallItems', id); if (!rec) throw new Error('Rreshti i tërheqjes nuk u gjet.'); var before = clone(rec);
+3365:     Object.assign(rec, patch || {}, { quantityReturned: round3(patch && patch.quantityReturned != null ? patch.quantityReturned : rec.quantityReturned), updatedAt: nowIso(), updatedBy: actor().username });
+3366:     await DB.atomicTx(['traceRecallItems', 'auditLogs'], 'readwrite', function (stores) { stores.traceRecallItems.put(rec); stores.auditLogs.put(C.auditEntry('traceRecallItem', rec.id, 'UPDATE', before, rec, rec.salesInvoiceNumber)); }); return rec;
+3367:   }
+3368: 
+3369:   async function closeRecallCase(id, notes) {
+3370:     requirePermission('documents.cancel');
+3371:     var rec = await DB.get('traceRecallCases', id); if (!rec) throw new Error('Rasti i tërheqjes nuk u gjet.'); if (rec.status === 'CLOSED') throw new Error('Rasti është mbyllur.'); var before = clone(rec);
+3372:     rec.status = 'CLOSED'; rec.closedAt = nowIso(); rec.closedBy = actor().username; rec.closureNotes = notes || ''; rec.updatedAt = nowIso();
+3373:     await DB.atomicTx(['traceRecallCases', 'auditLogs'], 'readwrite', function (stores) { stores.traceRecallCases.put(rec); stores.auditLogs.put(C.auditEntry('traceRecallCase', rec.id, 'CLOSE', before, rec, rec.recallNumber)); }); return rec;
+3374:   }
+3375: 
