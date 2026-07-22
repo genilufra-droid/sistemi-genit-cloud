@@ -62,15 +62,23 @@ const api=http.createServer(async(req,res)=>{
   await page.waitForSelector('#sg-p4-origin-panel',{state:'visible'});
   const formState=await page.evaluate(()=>({lotValue:document.getElementById('wf-lot').value,lotReadonly:document.getElementById('wf-lot').readOnly,farm:document.getElementById('wf-p4-farm').value,parcel:document.getElementById('wf-p4-parcel').value,postButton:[...document.querySelectorAll('button')].some(b=>b.textContent.includes('Posto Pranimin'))}));
   if(!formState.lotReadonly||!formState.lotValue.includes('AUTOMATIK')||formState.farm!==ids.farm||formState.parcel!==ids.parcel||!formState.postButton) throw new Error(`Formulari Phase 4 nuk u konfigurua: ${JSON.stringify(formState)}`);
+
   await page.evaluate(id=>App.postWeightReceipt(id),ids.weight);
-  await page.waitForFunction(()=>document.body.innerText.includes('RAW-GJF-20260722-0001'),null,{timeout:30000});
+  await page.waitForTimeout(1000);
+  if(state.patchCalls!==1||state.postCalls!==1){
+    const diagnostic=await page.evaluate(()=>({content:document.getElementById('content')?.innerText.slice(0,1500),toast:document.body.innerText.slice(-700),farm:document.getElementById('wf-p4-farm')?.value,parcel:document.getElementById('wf-p4-parcel')?.value}));
+    throw new Error(`Postimi i operatorit nuk arriti në API: state=${JSON.stringify(state)} diagnostic=${JSON.stringify(diagnostic)}`);
+  }
+
+  await page.evaluate(()=>App.view_traceLots());
+  await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('RAW-GJF-20260722-0001'),null,{timeout:30000});
   const traceListText=await page.locator('#content').innerText();
   if(traceListText.includes('+ Lot i Ri')||!traceListText.includes('Loti nuk krijohet manualisht')) throw new Error('Lista e loteve lejon krijim manual ose nuk shpjegon rrjedhën automatike.');
   await page.evaluate(id=>App.openLot360(id),ids.lot);
   await page.waitForSelector('.sg-p4-timeline',{state:'visible'});
   const modalText=await page.locator('#modal-box').innerText();
   if(!modalText.includes('PESH-2026-000001')||!modalText.includes('FH-2026-000001')||!modalText.includes('200')) throw new Error('Kartela 360° nuk tregon Peshimin, Fletë-Hyrjen dhe 200 kg.');
-  if(state.patchCalls!==1||state.postCalls!==1||state.bootstrapCalls<2) throw new Error(`Thirrjet Cloud janë të pasakta: ${JSON.stringify(state)}`);
+  if(state.bootstrapCalls<2) throw new Error(`Bootstrap-i Cloud nuk u rifreskua pas postimit: ${JSON.stringify(state)}`);
   if(errors.length) throw new Error(errors.join('\n'));
   console.log(JSON.stringify({result:'TEST_SUCCESS',manualLotButton:false,originPanel:true,weightDraftPatched:state.patchCalls,receiptPosted:state.postCalls,lot:'RAW-GJF-20260722-0001',trace360:true},null,2));
   await browser.close(); api.close();
