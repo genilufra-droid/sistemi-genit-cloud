@@ -12,4 +12,4 @@ npm warn config ignoring workspace config at /home/runner/work/sistemi-genit-clo
 > vite preview --host 0.0.0.0 --port ${PORT:-4173}
 
   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m4173[22m/[39m
-  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.1.0.18:[1m4173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.1.0.225:[1m4173[22m/[39m
