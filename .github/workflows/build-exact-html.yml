@@ -20,23 +20,11 @@ jobs:
           ref: exact-html-online
           fetch-depth: 0
 
-      - name: Restore exact verified single HTML
+      - name: Restore exact original single HTML
         run: |
           set -euo pipefail
-          rm -rf /tmp/html64-source-tree
-          git worktree add --detach /tmp/html64-source-tree origin/html-6-4-online
-          cat /tmp/html64-source-tree/html64-source/xz-00.b64 \
-              /tmp/html64-source-tree/html64-source/xz-01.b64 \
-              /tmp/html64-source-tree/html64-source/xz-02.b64 \
-              /tmp/html64-source-tree/html64-source/xz-03.b64 \
-              /tmp/html64-source-tree/html64-source/xz-04.b64 \
-              /tmp/html64-source-tree/html64-source/xz-05.b64 \
-              /tmp/html64-source-tree/html64-source/xz-06.b64 \
-              /tmp/html64-source-tree/html64-source/xz-07.b64 \
-            | tr -d '\r\n\t ' \
-            | base64 --decode \
-            | xz --decompress --stdout \
-            > apps/web/index.html
+          git cat-file -e 'b9518dec095cfea9ce00b401911f92e0b99403c5:legacy/Sistemi_Genit_Full_Single_6_4_Cash_Formats_MultiCompany.html'
+          git show 'b9518dec095cfea9ce00b401911f92e0b99403c5:legacy/Sistemi_Genit_Full_Single_6_4_Cash_Formats_MultiCompany.html' > apps/web/index.html
           test "$(wc -c < apps/web/index.html)" = "1873046"
           echo "7fbe7a11c20906076eaccb5c8e6c42946a6d3d9773cbeac33316cec160589bf6  apps/web/index.html" | sha256sum --check --strict
           grep -qi '<!doctype html' apps/web/index.html
