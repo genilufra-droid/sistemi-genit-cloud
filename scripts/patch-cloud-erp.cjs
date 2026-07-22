@@ -9,6 +9,12 @@ const cssPath = path.join(root, 'apps/web/cloud-erp-adapter.css');
 const start = '<!-- SG_CLOUD_ERP_ADAPTER_START -->';
 const end = '<!-- SG_CLOUD_ERP_ADAPTER_END -->';
 
+function finalDocumentBodyIndex(source) {
+  const match = source.match(/<\/body>\s*<\/html>\s*$/i);
+  if (!match || match.index == null) throw new Error('Mungon mbyllja strukturore finale </body></html> në apps/web/index.html');
+  return match.index;
+}
+
 let html = fs.readFileSync(htmlPath, 'utf8');
 const js = fs.readFileSync(jsPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
@@ -21,11 +27,7 @@ const block = `${start}\n<style id="sg-cloud-erp-adapter-style">\n${css}\n</styl
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 html = html.replace(new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, 'g'), '');
-const lowerBefore = html.toLowerCase();
-const finalHtmlBefore = lowerBefore.lastIndexOf('</html>');
-const bodyIndex = lowerBefore.lastIndexOf('</body>');
-if (bodyIndex < 0) throw new Error('Mungon </body> në apps/web/index.html');
-if (finalHtmlBefore >= 0 && bodyIndex > finalHtmlBefore) throw new Error('Mbyllja </body> nuk është para </html>.');
+const bodyIndex = finalDocumentBodyIndex(html);
 html = html.slice(0, bodyIndex) + block + '\n' + html.slice(bodyIndex);
 fs.writeFileSync(htmlPath, html);
 
@@ -37,7 +39,6 @@ if (!check.includes('CLOUD_POSTGRESQL') && !check.includes('CloudERP')) throw ne
 if (!check.includes(`"apiUrl":"${apiUrl.replace(/"/g, '\\"')}"`)) throw new Error('API URL nuk u injektua në HTML.');
 const markerIndex = check.indexOf(start);
 const endMarkerIndex = check.indexOf(end);
-const finalHtmlIndex = check.toLowerCase().lastIndexOf('</html>');
-if (markerIndex < 0 || endMarkerIndex <= markerIndex) throw new Error('Kufijtë e Cloud patch janë të pavlefshëm.');
-if (finalHtmlIndex >= 0 && endMarkerIndex > finalHtmlIndex) throw new Error('Cloud patch u vendos pas fundit real të dokumentit.');
+const finalBodyIndex = finalDocumentBodyIndex(check);
+if (markerIndex < 0 || endMarkerIndex <= markerIndex || endMarkerIndex >= finalBodyIndex) throw new Error('Cloud patch nuk u vendos para mbylljes strukturore finale.');
 console.log(`Cloud patched ${htmlPath}: API=${apiUrl || '(missing)'}; required=${required}; ${Buffer.byteLength(check)} bytes`);
