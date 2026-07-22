@@ -1,8 +1,55 @@
-initial=app
-FATAL: page.waitForSelector: Timeout 30000ms exceeded.
-Call log:
-  - waiting for locator('#app-shell') to be visible
-    65 × locator resolved to hidden <div class="app" id="app-shell">…</div>
-
-    at /tmp/sg-browser-test/smoke.cjs:31:14
-TEST_FAILED
+initial=first-admin
+module_count=50
+dashboard|Dashboard|307
+partners|Partnerët (Furnitorë & Klientë)|229
+products|Artikujt|147
+weightForm|Formulari i Peshave|1511
+weightList|Lista e Formularëve të Peshave|89
+purchaseRFQs|Kërkesa për Ofertë|190
+purchaseOrders|Porosi Blerjeje|187
+purchaseReceipts|Pranime Blerjeje|188
+purchaseList|Faturat e Blerjes|57
+purchaseReturns|Kthime te Furnitori|191
+supplierCreditNotes|Nota Krediti Furnitori|194
+salesForm|Faturë Shitje|363
+salesQuotations|Oferta Shitjeje|183
+salesOrders|Porosi Shitjeje|184
+deliveryNotes|Fletë-Dalje / Dorëzime|190
+salesList|Faturat e Shitjes|80
+creditNotes|Nota Krediti Klienti|188
+traceOrigins|Ferma, Zona e Mbledhjes & Lokacioni|451
+traceLots|Regjistri i Loteve|155
+traceProcesses|Proces, Tharje & Paketim|172
+traceQuality|Kontroll Cilësie dhe Karantinë|175
+traceReports|Raporte Gjurmueshmërie GACP|343
+traceRecalls|Tërheqje / Mock Recall|172
+cashDashboard|Paneli i Arkës|236
+cashAccounts|Llogaritë e Arkës|95
+cashReceipts|Mandat Arkëtimi|74
+cashPayments|Mandat Pagese|72
+cashJournal|Ditari i Arkës|674
+cashMovements|Lëvizjet e Arkës|194
+cashBalance|Gjendja e Arkës|99
+cashClosing|Mbyllja Ditore e Arkës|131
+cashReports|Raportet e Arkës|1075
+bankDashboard|Paneli i Bankës|223
+bankAccounts|Llogaritë Bankare|81
+bankPosts|Posta e Bankës|76
+bankJournal|Ditari i Bankës|578
+bankMovements|Lëvizjet Bankare|213
+transfers|Transfertat|107
+bankStatements|Ekstraktet Bankare|128
+bankReconciliation|Rakordimi Bankar|251
+bankReports|Raportet e Bankës|1014
+productCard|Kartela e Artikullit|105
+supplierCard|Kartela e Furnitorit|84
+obligations|Detyrimet|129
+repPurchase|Raporte Blerje|2284
+repSales|Raporte Shitje|2002
+settings|Cilësimet|767
+users|Përdoruesit dhe Rolet|662
+audit|Audit Log|197
+about|Rreth Sistemit|513
+capabilities={"indexedDb":true,"xlsx":true,"app":true,"auth":true,"print":true,"pdfText":true,"excelText":true,"printText":true}
+failures=0
+TEST_SUCCESS
