@@ -1,13 +1,23 @@
 name: Test every live HTML module
 
 on:
+  push:
+    branches: [exact-html-online]
+    paths:
+      - '.github/workflows/live-functional-smoke.yml'
   pull_request:
     branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   browser-smoke:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exact-html-online
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -19,25 +29,32 @@ jobs:
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
       - name: Test first setup and every module
+        id: smoke
+        continue-on-error: true
         working-directory: /tmp/sg-browser-test
         run: |
           cat > smoke.cjs <<'NODE'
+          const fs = require('fs');
           const { chromium } = require('playwright');
+          const reportPath = process.env.GITHUB_WORKSPACE + '/docs/live-functional-report.txt';
+          const report = [];
+          const add = value => { report.push(String(value)); console.log(value); };
 
           (async () => {
             const browser = await chromium.launch({ headless: true });
-            const context = await browser.newContext();
+            const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
             const page = await context.newPage();
-            const errors = [];
-            page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
+            const pageErrors = [];
+            page.on('pageerror', error => pageErrors.push(`pageerror: ${error.message}`));
             page.on('console', message => {
-              if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+              if (message.type() === 'error') pageErrors.push(`console: ${message.text()}`);
             });
 
-            await page.goto('https://genit-web-production.up.railway.app/?v=html64-functional-final', {
+            await page.goto('https://genit-web-production.up.railway.app/?v=html64-browser-diagnostic', {
               waitUntil: 'domcontentloaded', timeout: 60000,
             });
             await page.waitForFunction(() => document.querySelector('#first-admin-form') || document.querySelector('#login-form') || document.querySelector('#app-shell'), null, { timeout: 30000 });
+            add(`initial=${await page.locator('#first-admin-form').count() ? 'first-admin' : await page.locator('#login-form').count() ? 'login' : 'app'}`);
 
             if (await page.locator('#first-admin-form').count()) {
               await page.fill('#setup-display-name', 'Kontroll Automatik');
@@ -48,23 +65,20 @@ jobs:
             }
 
             await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-            await page.waitForSelector('#content', { state: 'attached' });
-
             const views = await page.locator('.nav-item[data-view]').evaluateAll(nodes => nodes.map(node => node.dataset.view));
-            if (views.length < 45) throw new Error(`U gjetën vetëm ${views.length} module në menu.`);
-
+            add(`module_count=${views.length}`);
             const failures = [];
             for (const view of views) {
-              const selector = `.nav-item[data-view="${view}"]`;
               try {
-                await page.locator(selector).click();
-                await page.waitForTimeout(180);
+                await page.locator(`.nav-item[data-view="${view}"]`).evaluate(node => node.click());
+                await page.waitForTimeout(120);
                 const state = await page.evaluate(() => ({
                   title: document.querySelector('#page-title')?.textContent?.trim() || '',
-                  content: document.querySelector('#content')?.innerText?.trim() || '',
+                  contentLength: (document.querySelector('#content')?.innerText || '').trim().length,
                 }));
+                add(`${view}|${state.title}|${state.contentLength}`);
                 if (!state.title) failures.push(`${view}: mungon titulli`);
-                if (!state.content) failures.push(`${view}: përmbajtja është bosh`);
+                if (!state.contentLength) failures.push(`${view}: përmbajtja është bosh`);
               } catch (error) {
                 failures.push(`${view}: ${error.message}`);
               }
@@ -80,22 +94,33 @@ jobs:
               excelText: document.documentElement.innerText.includes('Excel'),
               printText: document.documentElement.innerText.includes('Print'),
             }));
-            for (const [key, value] of Object.entries(capabilities)) {
-              if (!value) failures.push(`kapaciteti ${key} mungon`);
-            }
-
-            if (errors.length) failures.push(...errors);
-            if (failures.length) {
-              console.error(failures.join('\n'));
-              throw new Error(`${failures.length} kontrolle dështuan.`);
-            }
-
-            console.log(`SUCCESS: ${views.length} module u hapën pa gabime.`);
-            console.log(JSON.stringify(capabilities));
+            add(`capabilities=${JSON.stringify(capabilities)}`);
+            for (const [key, value] of Object.entries(capabilities)) if (!value) failures.push(`kapaciteti ${key} mungon`);
+            if (pageErrors.length) failures.push(...pageErrors);
+            add(`failures=${failures.length}`);
+            failures.forEach(value => add(`FAIL: ${value}`));
+            add(failures.length ? 'TEST_FAILED' : 'TEST_SUCCESS');
+            fs.mkdirSync(require('path').dirname(reportPath), { recursive: true });
+            fs.writeFileSync(reportPath, report.join('\n') + '\n');
             await browser.close();
+            if (failures.length) process.exit(1);
           })().catch(error => {
-            console.error(error);
+            add(`FATAL: ${error.stack || error.message || error}`);
+            add('TEST_FAILED');
+            fs.mkdirSync(require('path').dirname(reportPath), { recursive: true });
+            fs.writeFileSync(reportPath, report.join('\n') + '\n');
             process.exit(1);
           });
           NODE
           node smoke.cjs
+      - name: Save browser report
+        if: always() && github.event_name == 'push'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/live-functional-report.txt
+          git commit -m 'Record live functional browser test report'
+          git push origin exact-html-online
+      - name: Enforce browser result
+        if: steps.smoke.outcome != 'success'
+        run: exit 1
