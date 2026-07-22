@@ -26,10 +26,13 @@ export async function migratePhase2Documents(db) {
       total_amount NUMERIC(18,4) NOT NULL DEFAULT 0,
       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
       confirmed_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (tenant_id, company_id, doc_type, document_no)
     );
+    ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
     CREATE TABLE IF NOT EXISTS business_document_items (
       id UUID PRIMARY KEY,
       document_id UUID NOT NULL REFERENCES business_documents(id) ON DELETE CASCADE,
@@ -60,6 +63,7 @@ const itemSchema = z.object({
   unitPrice: z.coerce.number().min(0).default(0),
   vatRate: z.coerce.number().min(0).max(100).default(0),
 });
+
 const documentSchema = z.object({
   companyId: z.string().uuid(),
   warehouseId: z.string().uuid().nullable().optional(),
@@ -77,17 +81,21 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       const type = z.enum(DOCUMENT_TYPES).parse(req.query.type);
       const ids = await accessibleCompanyIds(req.user,pool);
       if (!ids.length) return res.json([]);
-      const { rows } = await pool.query(`
-        SELECT d.*,c.name AS company_name,w.name AS warehouse_name,bp.name AS partner_name,
-          COALESCE((SELECT json_agg(json_build_object('id',i.id,'productId',i.product_id,'description',i.description,'unit',i.unit,'coefficient',i.coefficient,'quantity',i.quantity,'freeQuantity',i.free_quantity,'unitPrice',i.unit_price,'vatRate',i.vat_rate,'lineTotal',i.line_total) ORDER BY i.created_at) FROM business_document_items i WHERE i.document_id=d.id),'[]'::json) AS items
-        FROM business_documents d
-        JOIN companies c ON c.id=d.company_id
-        LEFT JOIN warehouses w ON w.id=d.warehouse_id
-        LEFT JOIN business_partners bp ON bp.id=d.partner_id
+      const { rows } = await pool.query(`${documentSelectSql()}
         WHERE d.tenant_id=$1 AND d.company_id=ANY($2::uuid[]) AND d.doc_type=$3
         ORDER BY d.document_date DESC,d.created_at DESC`, [req.user.tenant_id,ids,type]);
       res.json(rows);
-    } catch (e) { next(e); }
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/documents/:id', authRequired, async (req,res,next) => {
+    try {
+      const { rows } = await pool.query(`${documentSelectSql()} WHERE d.id=$1 AND d.tenant_id=$2 LIMIT 1`, [req.params.id, req.user.tenant_id]);
+      const document = rows[0];
+      if (!document) throw requestError('Dokumenti nuk u gjet.', 404);
+      await assertCompanyAccess(req.user, document.company_id);
+      res.json(document);
+    } catch (error) { next(error); }
   });
 
   app.post('/api/documents', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
@@ -95,77 +103,229 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
     try {
       const input = documentSchema.parse(req.body);
       await client.query('BEGIN');
-      await assertCompanyAccess(req.user,input.companyId,client);
-      if (input.warehouseId) {
-        const w = await client.query('SELECT 1 FROM warehouses WHERE id=$1 AND tenant_id=$2 AND company_id=$3 AND active=TRUE',[input.warehouseId,req.user.tenant_id,input.companyId]);
-        if (!w.rowCount) throw requestError('Magazina nuk i përket kompanisë.',400);
-      }
-      if (input.partnerId) {
-        const p = await client.query('SELECT 1 FROM business_partners WHERE id=$1 AND tenant_id=$2 AND company_id=$3 AND active=TRUE',[input.partnerId,req.user.tenant_id,input.companyId]);
-        if (!p.rowCount) throw requestError('Partneri nuk i përket kompanisë.',400);
-      }
-      const productIds = [...new Set(input.items.map(x=>x.productId))];
-      const products = await client.query('SELECT id,name,company_id FROM products WHERE tenant_id=$1 AND company_id=$2 AND id=ANY($3::uuid[]) AND active=TRUE',[req.user.tenant_id,input.companyId,productIds]);
-      if (products.rowCount !== productIds.length) throw requestError('Një ose më shumë artikuj nuk janë të vlefshëm.',400);
-      const productMap = new Map(products.rows.map(x=>[x.id,x]));
+      const prepared = await prepareDocumentInput(client, req.user, input, assertCompanyAccess);
       const documentNo = input.documentNo || await nextDocumentNo(client,req.user.tenant_id,input.companyId,input.docType);
-      let totalNet=0,totalVat=0,totalAmount=0;
-      const calculated = input.items.map(x=>{
-        const lineNet = Number(x.quantity)*Number(x.unitPrice);
-        const lineVat = lineNet*Number(x.vatRate)/100;
-        const lineTotal = lineNet+lineVat;
-        totalNet+=lineNet; totalVat+=lineVat; totalAmount+=lineTotal;
-        return {...x,description:productMap.get(x.productId).name,lineNet,lineVat,lineTotal};
-      });
-      const id=randomUUID();
-      const {rows}=await client.query(`INSERT INTO business_documents(id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,notes,total_net,total_vat,total_amount,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,[id,req.user.tenant_id,input.companyId,input.warehouseId||null,input.partnerId||null,input.docType,documentNo,input.documentDate,input.notes||null,totalNet,totalVat,totalAmount,req.user.id]);
-      for (const x of calculated) {
-        await client.query(`INSERT INTO business_document_items(id,document_id,product_id,description,unit,coefficient,quantity,free_quantity,unit_price,vat_rate,line_net,line_vat,line_total) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[randomUUID(),id,x.productId,x.description,x.unit,x.coefficient,x.quantity,x.freeQuantity,x.unitPrice,x.vatRate,x.lineNet,x.lineVat,x.lineTotal]);
-      }
-      await audit({tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CREATE',entityType:'business_document',entityId:id,companyId:input.companyId,metadata:{docType:input.docType,documentNo,totalAmount},ip:req.ip},client);
+      const id = randomUUID();
+      const { rows } = await client.query(`
+        INSERT INTO business_documents(
+          id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,notes,total_net,total_vat,total_amount,created_by
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`, [
+        id,req.user.tenant_id,input.companyId,input.warehouseId||null,input.partnerId||null,input.docType,
+        documentNo,input.documentDate,input.notes||null,prepared.totalNet,prepared.totalVat,prepared.totalAmount,req.user.id,
+      ]);
+      await replaceItems(client, id, prepared.items);
+      await audit({
+        tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CREATE',entityType:'business_document',
+        entityId:id,companyId:input.companyId,metadata:{docType:input.docType,documentNo,totalAmount:prepared.totalAmount},ip:req.ip,
+      },client);
       await client.query('COMMIT');
       emitTenant(req.user.tenant_id,'documents',{action:'created',id,docType:input.docType});
       res.status(201).json(rows[0]);
-    } catch(e) { await client.query('ROLLBACK'); next(e); } finally { client.release(); }
+    } catch(error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
+  });
+
+  app.patch('/api/documents/:id', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
+    const client = await pool.connect();
+    try {
+      const input = documentSchema.parse(req.body);
+      await client.query('BEGIN');
+      const current = await lockDocument(client, req.params.id, req.user.tenant_id);
+      await assertCompanyAccess(req.user,current.company_id,client);
+      if (current.status !== 'DRAFT') throw requestError('Vetëm dokumenti Draft mund të editohet.',409);
+      if (input.docType !== current.doc_type) throw requestError('Lloji i dokumentit nuk mund të ndryshohet.',400);
+      if (input.companyId !== current.company_id) throw requestError('Kompania nuk mund të ndryshohet pas krijimit.',400);
+      const prepared = await prepareDocumentInput(client, req.user, input, assertCompanyAccess);
+      const documentNo = input.documentNo || current.document_no;
+      const { rows } = await client.query(`
+        UPDATE business_documents SET warehouse_id=$1,partner_id=$2,document_no=$3,document_date=$4,notes=$5,
+          total_net=$6,total_vat=$7,total_amount=$8,updated_at=NOW()
+        WHERE id=$9 AND tenant_id=$10 RETURNING *`, [
+        input.warehouseId||null,input.partnerId||null,documentNo,input.documentDate,input.notes||null,
+        prepared.totalNet,prepared.totalVat,prepared.totalAmount,current.id,req.user.tenant_id,
+      ]);
+      await replaceItems(client,current.id,prepared.items);
+      await audit({
+        tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_UPDATE',entityType:'business_document',
+        entityId:current.id,companyId:current.company_id,metadata:{docType:current.doc_type,documentNo,totalAmount:prepared.totalAmount},ip:req.ip,
+      },client);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id,'documents',{action:'updated',id:current.id,docType:current.doc_type});
+      res.json(rows[0]);
+    } catch(error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
   });
 
   app.post('/api/documents/:id/confirm', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
     const client=await pool.connect();
     try {
       await client.query('BEGIN');
-      const {rows}=await client.query('SELECT * FROM business_documents WHERE id=$1 AND tenant_id=$2 FOR UPDATE',[req.params.id,req.user.tenant_id]);
-      const doc=rows[0];
-      if(!doc) throw requestError('Dokumenti nuk u gjet.',404);
-      await assertCompanyAccess(req.user,doc.company_id,client);
-      if(doc.status!=='DRAFT') throw requestError('Vetëm dokumenti Draft mund të konfirmohet.',409);
-      const items=(await client.query('SELECT * FROM business_document_items WHERE document_id=$1 ORDER BY created_at',[doc.id])).rows;
-      const sign=STOCK_TYPES[doc.doc_type];
+      const document = await lockDocument(client,req.params.id,req.user.tenant_id);
+      await assertCompanyAccess(req.user,document.company_id,client);
+      if(document.status!=='DRAFT') throw requestError('Vetëm dokumenti Draft mund të konfirmohet.',409);
+      const items = await readItems(client,document.id);
+      const sign = STOCK_TYPES[document.doc_type];
       if(sign) {
-        if(!doc.warehouse_id) throw requestError('Zgjidhni magazinën para konfirmimit.',400);
+        if(!document.warehouse_id) throw requestError('Zgjidhni magazinën para konfirmimit.',400);
         for(const item of items) {
-          const qty=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);
+          const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);
           if(sign<0) {
-            const available=await client.query('SELECT COALESCE(SUM(quantity_base),0)::numeric AS qty FROM stock_movements WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND product_id=$4',[req.user.tenant_id,doc.company_id,doc.warehouse_id,item.product_id]);
-            if(Number(available.rows[0].qty)+1e-9<qty) throw requestError(`Gjendje e pamjaftueshme për ${item.description}.`,409);
+            const available=await client.query(
+              'SELECT COALESCE(SUM(quantity_base),0)::numeric AS qty FROM stock_movements WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND product_id=$4',
+              [req.user.tenant_id,document.company_id,document.warehouse_id,item.product_id],
+            );
+            if(Number(available.rows[0].qty)+1e-9<quantityBase) {
+              throw requestError(`Gjendje e pamjaftueshme për ${item.description}.`,409);
+            }
           }
-          await client.query(`INSERT INTO stock_movements(id,tenant_id,company_id,warehouse_id,product_id,movement_type,quantity_base,unit_cost,reference_type,reference_id,reference_no,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'business_document',$9,$10,$11)`,[randomUUID(),req.user.tenant_id,doc.company_id,doc.warehouse_id,item.product_id,doc.doc_type,sign*qty,item.unit_price,doc.id,doc.document_no,req.user.id]);
+          await insertStockMovement(client, {
+            tenantId:req.user.tenant_id, companyId:document.company_id, warehouseId:document.warehouse_id,
+            productId:item.product_id, movementType:document.doc_type, quantityBase:sign*quantityBase,
+            unitCost:item.unit_price, referenceId:document.id, referenceNo:document.document_no, userId:req.user.id,
+          });
         }
       }
-      await client.query("UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),updated_at=NOW() WHERE id=$1",[doc.id]);
-      await audit({tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONFIRM',entityType:'business_document',entityId:doc.id,companyId:doc.company_id,metadata:{docType:doc.doc_type,documentNo:doc.document_no},ip:req.ip},client);
+      await client.query("UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),cancelled_at=NULL,updated_at=NOW() WHERE id=$1",[document.id]);
+      await audit({
+        tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONFIRM',entityType:'business_document',
+        entityId:document.id,companyId:document.company_id,metadata:{docType:document.doc_type,documentNo:document.document_no},ip:req.ip,
+      },client);
       await client.query('COMMIT');
-      emitTenant(req.user.tenant_id,'documents',{action:'confirmed',id:doc.id,docType:doc.doc_type});
-      if(sign) emitTenant(req.user.tenant_id,'stock',{action:'changed',warehouseId:doc.warehouse_id});
-      res.json({id:doc.id,status:'CONFIRMED'});
-    } catch(e) { await client.query('ROLLBACK'); next(e); } finally { client.release(); }
+      emitTenant(req.user.tenant_id,'documents',{action:'confirmed',id:document.id,docType:document.doc_type});
+      if(sign) emitTenant(req.user.tenant_id,'stock',{action:'changed',warehouseId:document.warehouse_id});
+      res.json({id:document.id,status:'CONFIRMED'});
+    } catch(error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
   });
+
+  app.post('/api/documents/:id/cancel', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await lockDocument(client,req.params.id,req.user.tenant_id);
+      await assertCompanyAccess(req.user,document.company_id,client);
+      if(document.status==='CANCELLED') throw requestError('Dokumenti është anuluar më parë.',409);
+      const sign = STOCK_TYPES[document.doc_type];
+      if(document.status==='CONFIRMED' && sign) {
+        const items = await readItems(client,document.id);
+        for(const item of items) {
+          const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);
+          await insertStockMovement(client, {
+            tenantId:req.user.tenant_id, companyId:document.company_id, warehouseId:document.warehouse_id,
+            productId:item.product_id, movementType:`${document.doc_type}_CANCEL`, quantityBase:-sign*quantityBase,
+            unitCost:item.unit_price, referenceId:document.id, referenceNo:`ANULIM ${document.document_no}`, userId:req.user.id,
+          });
+        }
+      }
+      await client.query("UPDATE business_documents SET status='CANCELLED',cancelled_at=NOW(),updated_at=NOW() WHERE id=$1",[document.id]);
+      await audit({
+        tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CANCEL',entityType:'business_document',
+        entityId:document.id,companyId:document.company_id,metadata:{docType:document.doc_type,documentNo:document.document_no,previousStatus:document.status},ip:req.ip,
+      },client);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id,'documents',{action:'cancelled',id:document.id,docType:document.doc_type});
+      if(sign && document.status==='CONFIRMED') emitTenant(req.user.tenant_id,'stock',{action:'changed',warehouseId:document.warehouse_id});
+      res.json({id:document.id,status:'CANCELLED'});
+    } catch(error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
+  });
+}
+
+function documentSelectSql() {
+  return `SELECT d.*,c.name AS company_name,w.name AS warehouse_name,bp.name AS partner_name,
+    COALESCE((SELECT json_agg(json_build_object(
+      'id',i.id,'productId',i.product_id,'description',i.description,'unit',i.unit,'coefficient',i.coefficient,
+      'quantity',i.quantity,'freeQuantity',i.free_quantity,'unitPrice',i.unit_price,'vatRate',i.vat_rate,
+      'lineNet',i.line_net,'lineVat',i.line_vat,'lineTotal',i.line_total
+    ) ORDER BY i.created_at) FROM business_document_items i WHERE i.document_id=d.id),'[]'::json) AS items
+    FROM business_documents d
+    JOIN companies c ON c.id=d.company_id
+    LEFT JOIN warehouses w ON w.id=d.warehouse_id
+    LEFT JOIN business_partners bp ON bp.id=d.partner_id`;
+}
+
+async function prepareDocumentInput(client,user,input,assertCompanyAccess) {
+  await assertCompanyAccess(user,input.companyId,client);
+  if (input.warehouseId) {
+    const warehouse = await client.query(
+      'SELECT 1 FROM warehouses WHERE id=$1 AND tenant_id=$2 AND company_id=$3 AND active=TRUE',
+      [input.warehouseId,user.tenant_id,input.companyId],
+    );
+    if (!warehouse.rowCount) throw requestError('Magazina nuk i përket kompanisë ose është joaktive.',400);
+  }
+  if (input.partnerId) {
+    const partner = await client.query(
+      'SELECT 1 FROM business_partners WHERE id=$1 AND tenant_id=$2 AND company_id=$3 AND active=TRUE',
+      [input.partnerId,user.tenant_id,input.companyId],
+    );
+    if (!partner.rowCount) throw requestError('Partneri nuk i përket kompanisë ose është joaktiv.',400);
+  }
+  const productIds=[...new Set(input.items.map((item)=>item.productId))];
+  const productResult=await client.query(
+    'SELECT id,name,company_id FROM products WHERE tenant_id=$1 AND company_id=$2 AND id=ANY($3::uuid[]) AND active=TRUE',
+    [user.tenant_id,input.companyId,productIds],
+  );
+  if(productResult.rowCount!==productIds.length) throw requestError('Një ose më shumë artikuj nuk janë të vlefshëm.',400);
+  const productMap=new Map(productResult.rows.map((product)=>[product.id,product]));
+  let totalNet=0; let totalVat=0; let totalAmount=0;
+  const items=input.items.map((item)=>{
+    const lineNet=Number(item.quantity)*Number(item.unitPrice);
+    const lineVat=lineNet*Number(item.vatRate)/100;
+    const lineTotal=lineNet+lineVat;
+    totalNet+=lineNet; totalVat+=lineVat; totalAmount+=lineTotal;
+    return {...item,description:productMap.get(item.productId).name,lineNet,lineVat,lineTotal};
+  });
+  return {items,totalNet,totalVat,totalAmount};
+}
+
+async function replaceItems(client,documentId,items) {
+  await client.query('DELETE FROM business_document_items WHERE document_id=$1',[documentId]);
+  for(const item of items) {
+    await client.query(`
+      INSERT INTO business_document_items(
+        id,document_id,product_id,description,unit,coefficient,quantity,free_quantity,unit_price,vat_rate,line_net,line_vat,line_total
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
+      randomUUID(),documentId,item.productId,item.description,item.unit,item.coefficient,item.quantity,item.freeQuantity,
+      item.unitPrice,item.vatRate,item.lineNet,item.lineVat,item.lineTotal,
+    ]);
+  }
+}
+
+async function lockDocument(client,id,tenantId) {
+  const {rows}=await client.query('SELECT * FROM business_documents WHERE id=$1 AND tenant_id=$2 FOR UPDATE',[id,tenantId]);
+  if(!rows[0]) throw requestError('Dokumenti nuk u gjet.',404);
+  return rows[0];
+}
+
+async function readItems(client,documentId) {
+  return (await client.query('SELECT * FROM business_document_items WHERE document_id=$1 ORDER BY created_at',[documentId])).rows;
+}
+
+async function insertStockMovement(client,input) {
+  await client.query(`
+    INSERT INTO stock_movements(
+      id,tenant_id,company_id,warehouse_id,product_id,movement_type,quantity_base,unit_cost,
+      reference_type,reference_id,reference_no,created_by
+    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'business_document',$9,$10,$11)`, [
+    randomUUID(),input.tenantId,input.companyId,input.warehouseId,input.productId,input.movementType,
+    input.quantityBase,input.unitCost,input.referenceId,input.referenceNo,input.userId,
+  ]);
 }
 
 async function nextDocumentNo(client,tenantId,companyId,type) {
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`${tenantId}:${companyId}:${type}`]);
   const {rows}=await client.query('SELECT COUNT(*)::int+1 AS n FROM business_documents WHERE tenant_id=$1 AND company_id=$2 AND doc_type=$3',[tenantId,companyId,type]);
-  const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'PR',PURCHASE_INVOICE:'FB',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS'}[type]||'DOK';
+  const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'FH',PURCHASE_INVOICE:'FB',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS'}[type]||'DOK';
   return `${prefix}-${new Date().getFullYear()}-${String(rows[0].n).padStart(5,'0')}`;
 }
-async function accessibleCompanyIds(user,db){if(user.role==='SUPER_ADMIN'){const {rows}=await db.query('SELECT id FROM companies WHERE tenant_id=$1',[user.tenant_id]);return rows.map(r=>r.id);}const {rows}=await db.query('SELECT company_id AS id FROM user_companies WHERE user_id=$1',[user.id]);return rows.map(r=>r.id);}
-function requestError(message,status){const e=new Error(message);e.status=status;return e;}
+
+async function accessibleCompanyIds(user,db) {
+  if(user.role==='SUPER_ADMIN') {
+    const {rows}=await db.query('SELECT id FROM companies WHERE tenant_id=$1',[user.tenant_id]);
+    return rows.map((row)=>row.id);
+  }
+  const {rows}=await db.query('SELECT company_id AS id FROM user_companies WHERE user_id=$1',[user.id]);
+  return rows.map((row)=>row.id);
+}
+
+function requestError(message,status) {
+  const error=new Error(message);
+  error.status=status;
+  return error;
+}
