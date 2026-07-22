@@ -12,6 +12,10 @@
   var cfg = global.__GENIT_CLOUD_CONFIG__ || {};
   var API_URL = String(cfg.apiUrl || '').replace(/\/+$/, '');
   var REQUIRED = cfg.required !== false;
+  if (!API_URL && !REQUIRED) {
+    global.CloudERP = { apiUrl: '', required: false, offlineTestMode: true };
+    return;
+  }
   var TOKEN_KEY = 'sg_cloud_access_token_v1';
   var ACTIVE_COMPANY_KEY = 'sg_cloud_active_company_v1';
   var ACTIVE_WAREHOUSE_KEY = 'sg_cloud_active_warehouse_v1';
