@@ -1,0 +1,43 @@
+name: Extract Cloud config snippet
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - '.github/workflows/extract-cloud-config-snippet.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
+      - run: |
+          cd apps/web
+          npm ci --workspaces=false
+          VITE_API_URL=http://127.0.0.1:3100 GENIT_CLOUD_REQUIRED=true npm run build
+          cd ../..
+          python3 <<'PY'
+          from pathlib import Path
+          s=Path('apps/web/dist/index.html').read_text()
+          terms=['SG_CLOUD_ERP_ADAPTER_START','sg-cloud-erp-config','sg-cloud-erp-adapter-script']
+          out=[]
+          for term in terms:
+              i=s.find(term)
+              out.append(f'===== {term} @ {i} =====')
+              out.append(repr(s[max(0,i-300):i+900]))
+          Path('docs/cloud-config-snippet.txt').write_text('\n'.join(out))
+          PY
+      - run: |
+          rm -f .github/workflows/extract-cloud-config-snippet.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/cloud-config-snippet.txt .github/workflows/extract-cloud-config-snippet.yml
+          git commit -m 'Record generated Cloud config snippet'
+          git push origin HEAD:cloud-erp-phase3-online-core
