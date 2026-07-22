@@ -5,6 +5,7 @@ const webUrl = String(process.env.WEB_URL || 'https://genit-web-production.up.ra
 const expectedCommit = String(process.env.EXPECTED_COMMIT || '14165789188bf58ea479acba89ab37c2a63c61a5');
 const outputDir = '/tmp/phase3-production';
 const reportPath = `${outputDir}/report.json`;
+const maxAttempts = Number(process.env.MAX_ATTEMPTS || 12);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchText(url, options = {}) {
@@ -23,11 +24,12 @@ async function fetchText(url, options = {}) {
 await fs.mkdir(outputDir, { recursive: true });
 const startedAt = new Date().toISOString();
 let report;
+let lastHtml = '';
+let attemptUsed = 0;
 
 try {
   let html = '';
-  let attemptUsed = 0;
-  for (let attempt = 1; attempt <= 60; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     attemptUsed = attempt;
     const cache = `phase3-${expectedCommit}-${attempt}-${Date.now()}`;
     try {
@@ -35,15 +37,18 @@ try {
         headers: { 'Cache-Control': 'no-cache' },
         redirect: 'follow',
       });
-      html = result.text;
-      if (html.includes('SG_CLOUD_ERP_ADAPTER_START') && html.includes('cloud-first-admin-form')) break;
+      lastHtml = result.text;
+      if (lastHtml.includes('SG_CLOUD_ERP_ADAPTER_START') && lastHtml.includes('cloud-first-admin-form')) {
+        html = lastHtml;
+        break;
+      }
+      console.error(`Attempt ${attempt}: HTML live u mor, por marker-i Cloud mungon (${Buffer.byteLength(lastHtml)} bytes).`);
     } catch (error) {
       console.error(`Attempt ${attempt}: ${error.message}`);
     }
-    html = '';
     await sleep(10000);
   }
-  if (!html) throw new Error('Railway nuk publikoi HTML-në Cloud brenda afatit.');
+  if (!html) throw new Error('Railway nuk publikoi HTML-në Cloud brenda afatit të verifikimit.');
 
   const configMatch = html.match(/window\.__GENIT_CLOUD_CONFIG__=(\{[^<]+\});<\/script>/);
   if (!configMatch) throw new Error('Konfigurimi Cloud mungon nga HTML-ja live.');
@@ -92,12 +97,20 @@ try {
     attempts: attemptUsed,
   };
 } catch (error) {
+  if (lastHtml) await fs.writeFile(`${outputDir}/live-last.html`, lastHtml);
   report = {
     result: 'PRODUCTION_FAILED',
     startedAt,
     verifiedAt: new Date().toISOString(),
     webUrl,
     expectedCommit,
+    attempts: attemptUsed,
+    lastHtmlBytes: Buffer.byteLength(lastHtml),
+    lastHtmlSha256: lastHtml ? crypto.createHash('sha256').update(lastHtml).digest('hex') : null,
+    hasCloudMarker: lastHtml.includes('SG_CLOUD_ERP_ADAPTER_START'),
+    hasCloudSetupForm: lastHtml.includes('cloud-first-admin-form'),
+    hasOdooMarker: lastHtml.includes('SG_ODOO_TRACEABILITY_ACTIONS_START'),
+    title: (lastHtml.match(/<title>([^<]*)<\/title>/i) || [null, null])[1],
     error: error.stack || error.message || String(error),
   };
   process.exitCode = 1;
