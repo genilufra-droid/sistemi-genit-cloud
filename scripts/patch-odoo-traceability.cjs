@@ -24,6 +24,33 @@ const verifiedSync = "await App.refreshAll(); App.data.lots = await DB.getAll('l
 if (js.includes(oldSync)) js = js.replace(oldSync, verifiedSync);
 else if (!js.includes(verifiedSync)) throw new Error('Mungon pika e sinkronizimit të skenarit të lotit.');
 
+const demoFallbackMarker = "var persistedDemoBatch = await DB.get('processBatches', demoBatch.id);";
+if (!js.includes(demoFallbackMarker)) {
+  const callStart = js.indexOf('    await S.saveProcessBatch({ id: DEMO.batchId');
+  if (callStart < 0) throw new Error('Mungon thirrja e Urdhrit demonstrues të Punës.');
+  const callEnd = js.indexOf('\n', callStart);
+  if (callEnd < 0) throw new Error('Thirrja e Urdhrit demonstrues nuk ka fund rreshti.');
+  const originalCall = js.slice(callStart, callEnd);
+  const capturedCall = originalCall.replace('await S.saveProcessBatch(', 'var demoBatch = await S.saveProcessBatch(');
+  const fallback = [
+    capturedCall,
+    "    var persistedDemoBatch = await DB.get('processBatches', demoBatch.id);",
+    "    if (!persistedDemoBatch) {",
+    "      await DB.atomicTx(['processBatches', 'processBatchInputs'], 'readwrite', function (stores) {",
+    "        stores.processBatches.put(demoBatch);",
+    "        (demoBatch.inputs || []).forEach(function (line) { stores.processBatchInputs.put(line); });",
+    "      });",
+    "      persistedDemoBatch = await DB.get('processBatches', demoBatch.id);",
+    "    }",
+    "    if (!persistedDemoBatch) throw new Error('Urdhri demonstrues i Punës nuk u ruajt në databazë.');"
+  ].join('\n');
+  js = js.slice(0, callStart) + fallback + js.slice(callEnd);
+}
+const oldBatchReturn = "batch: await DB.get('processBatches', DEMO.batchId)";
+const verifiedBatchReturn = "batch: await DB.get('processBatches', demoBatch.id)";
+if (js.includes(oldBatchReturn)) js = js.replace(oldBatchReturn, verifiedBatchReturn);
+else if (!js.includes(verifiedBatchReturn)) throw new Error('Mungon kthimi i Urdhrit demonstrues të Punës.');
+
 const block = `${start}\n<style id="sg-odoo-traceability-actions-style">\n${css}\n</style>\n<script id="sg-odoo-traceability-actions-script">\n${js}\n</script>\n${end}`;
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -39,6 +66,7 @@ if (!check.includes('Test: Gjethe Ferre 200 → 50 kg')) throw new Error('Butoni
 if (!check.includes('+ Urdhër Pune')) throw new Error('Butoni Urdhër Pune mungon pas patch-it.');
 if (!check.includes('+ Lot i Ri')) throw new Error('Butoni Lot i Ri mungon pas patch-it.');
 if (!check.includes(verifiedSync)) throw new Error('Sinkronizimi i verifikuar i lotit mungon nga HTML-ja finale.');
+if (!check.includes(demoFallbackMarker) || !check.includes(verifiedBatchReturn)) throw new Error('Verifikimi i Urdhrit demonstrues mungon nga HTML-ja finale.');
 const markerIndex = check.indexOf(start);
 const finalBodyIndex = finalDocumentBodyIndex(check);
 if (markerIndex < 0 || markerIndex >= finalBodyIndex) throw new Error('Patch-i Odoo nuk u vendos para mbylljes strukturore finale.');
