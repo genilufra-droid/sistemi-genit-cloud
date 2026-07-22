@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "npm run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}",
-    "build": "rm -rf dist && mkdir -p dist && cp index.html dist/index.html",
+    "build": "node ../../scripts/patch-odoo-traceability.cjs && rm -rf dist && mkdir -p dist && cp index.html dist/index.html",
     "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
