@@ -1,0 +1,63 @@
+name: Patch Cloud adapter offline test fallback
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - '.github/workflows/patch-cloud-adapter-fallback.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
+
+      - name: Preserve original offline bootstrap for isolated tests
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/cloud-erp-adapter.js')
+          s = p.read_text()
+          old_object = "  var original = {\n    refreshAll: App.refreshAll,"
+          new_object = "  var original = {\n    bootstrap: Auth.bootstrap,\n    refreshAll: App.refreshAll,"
+          if old_object in s:
+              s = s.replace(old_object, new_object, 1)
+          elif new_object not in s:
+              raise SystemExit('Original bootstrap object anchor missing')
+          old_catch = "    } catch(e) { if(REQUIRED) renderConnectionError(e); else return original.logout(); }"
+          new_catch = "    } catch(e) { if(REQUIRED) renderConnectionError(e); else return original.bootstrap(); }"
+          if old_catch in s:
+              s = s.replace(old_catch, new_catch, 1)
+          elif new_catch not in s:
+              raise SystemExit('Cloud fallback catch anchor missing')
+          p.write_text(s)
+          PY
+          node --check apps/web/cloud-erp-adapter.js
+
+      - name: Verify offline tests and production Cloud separation
+        run: |
+          npm ci --workspace apps/web
+          npm run build --workspace apps/web
+          grep -q '"required":false' apps/web/dist/index.html
+          grep -q 'bootstrap: Auth.bootstrap' apps/web/dist/index.html
+          rm -rf apps/web/dist
+          VITE_API_URL=https://api.example.test GENIT_CLOUD_REQUIRED=true npm run build --workspace apps/web
+          grep -q '"required":true' apps/web/dist/index.html
+          grep -q 'https://api.example.test' apps/web/dist/index.html
+
+      - name: Commit adapter correction and remove workflow
+        run: |
+          rm -f .github/workflows/patch-cloud-adapter-fallback.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/cloud-erp-adapter.js .github/workflows/patch-cloud-adapter-fallback.yml
+          git commit -m 'Separate production Cloud mode from isolated offline tests'
+          git push origin HEAD:cloud-erp-phase3-online-core
