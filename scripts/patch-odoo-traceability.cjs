@@ -46,6 +46,12 @@ if (!js.includes(demoFallbackMarker)) {
   ].join('\n');
   js = js.slice(0, callStart) + fallback + js.slice(callEnd);
 }
+
+const oldSaleReturn = "sale: await DB.get('salesInvoices', DEMO.saleId)";
+const verifiedSaleReturn = "sale: await DB.get('salesInvoices', invoice.id)";
+if (js.includes(oldSaleReturn)) js = js.replace(oldSaleReturn, verifiedSaleReturn);
+else if (!js.includes(verifiedSaleReturn)) throw new Error('Mungon kthimi i faturës demonstrative me ID të qëndrueshme.');
+
 const oldBatchReturn = "batch: await DB.get('processBatches', DEMO.batchId)";
 const verifiedBatchReturn = "batch: await DB.get('processBatches', demoBatch.id)";
 if (js.includes(oldBatchReturn)) js = js.replace(oldBatchReturn, verifiedBatchReturn);
@@ -66,7 +72,7 @@ if (!check.includes('Test: Gjethe Ferre 200 → 50 kg')) throw new Error('Butoni
 if (!check.includes('+ Urdhër Pune')) throw new Error('Butoni Urdhër Pune mungon pas patch-it.');
 if (!check.includes('+ Lot i Ri')) throw new Error('Butoni Lot i Ri mungon pas patch-it.');
 if (!check.includes(verifiedSync)) throw new Error('Sinkronizimi i verifikuar i lotit mungon nga HTML-ja finale.');
-if (!check.includes(demoFallbackMarker) || !check.includes(verifiedBatchReturn)) throw new Error('Verifikimi i Urdhrit demonstrues mungon nga HTML-ja finale.');
+if (!check.includes(demoFallbackMarker) || !check.includes(verifiedSaleReturn) || !check.includes(verifiedBatchReturn)) throw new Error('Verifikimi i skenarit demonstrues mungon nga HTML-ja finale.');
 const markerIndex = check.indexOf(start);
 const finalBodyIndex = finalDocumentBodyIndex(check);
 if (markerIndex < 0 || markerIndex >= finalBodyIndex) throw new Error('Patch-i Odoo nuk u vendos para mbylljes strukturore finale.');
