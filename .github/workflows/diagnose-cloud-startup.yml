@@ -1,0 +1,99 @@
+name: Diagnose Phase 3 Cloud startup
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - '.github/workflows/diagnose-cloud-startup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
+      - name: Build Cloud HTML
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          VITE_API_URL=http://127.0.0.1:3100 GENIT_CLOUD_REQUIRED=true npm run build
+      - name: Install Chromium
+        run: |
+          mkdir -p /tmp/cloud-startup
+          cd /tmp/cloud-startup
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Capture startup DOM and errors
+        run: |
+          mkdir -p docs
+          cd apps/web
+          npm run start > /tmp/cloud-startup-web.log 2>&1 &
+          web_pid=$!
+          for attempt in $(seq 1 45); do curl --fail --silent http://127.0.0.1:4173 >/dev/null && break; sleep 1; done
+          cd ../..
+          cat > /tmp/cloud-startup/diagnose.cjs <<'NODE'
+          const http=require('node:http');
+          const {chromium}=require('playwright');
+          const api=http.createServer((req,res)=>{
+            const body=JSON.stringify(req.url==='/api/setup/status'?{needsSetup:true}:{error:'NOT_FOUND',message:req.url});
+            res.writeHead(req.url==='/api/setup/status'?200:404,{'content-type':'application/json','access-control-allow-origin':'*','content-length':Buffer.byteLength(body)});res.end(body);
+          });
+          (async()=>{
+            await new Promise(r=>api.listen(3100,'127.0.0.1',r));
+            const browser=await chromium.launch({headless:true});
+            const page=await browser.newPage();
+            const events=[];
+            page.on('pageerror',e=>events.push('pageerror: '+e.message));
+            page.on('console',m=>events.push('console['+m.type()+']: '+m.text()));
+            page.on('requestfailed',r=>events.push('requestfailed: '+r.url()+' '+(r.failure()&&r.failure().errorText)));
+            await page.goto('http://127.0.0.1:4173',{waitUntil:'domcontentloaded',timeout:60000});
+            await page.waitForTimeout(4000);
+            const d=await page.evaluate(()=>{
+              const auth=document.getElementById('auth-root');
+              const shell=document.getElementById('app-shell');
+              const script=document.getElementById('sg-cloud-erp-adapter-script');
+              const config=document.getElementById('sg-cloud-erp-config');
+              return {
+                readyState:document.readyState,
+                config:window.__GENIT_CLOUD_CONFIG__||null,
+                adapterFlag:Boolean(window.__SG_CLOUD_ERP_ADAPTER__),
+                hasCloudERP:Boolean(window.CloudERP),
+                cloudApiUrl:window.CloudERP&&window.CloudERP.apiUrl,
+                authBootstrap:window.Auth&&String(window.Auth.bootstrap).slice(0,500),
+                authDisplay:auth&&getComputedStyle(auth).display,
+                authHtml:auth&&auth.outerHTML.slice(0,4000),
+                shellDisplay:shell&&getComputedStyle(shell).display,
+                hasCloudForm:Boolean(document.getElementById('cloud-first-admin-form')),
+                hasLocalForm:Boolean(document.getElementById('first-admin-form')),
+                adapterScript:Boolean(script),
+                adapterScriptText:script&&script.textContent.slice(0,250),
+                configText:config&&config.textContent
+              };
+            });
+            console.log(JSON.stringify({diagnostic:d,events},null,2));
+            await browser.close();await new Promise(r=>api.close(r));
+          })().catch(e=>{console.error(e.stack||e);process.exit(1)});
+          NODE
+          NODE_PATH=/tmp/cloud-startup/node_modules node /tmp/cloud-startup/diagnose.cjs > docs/phase3-cloud-startup-report.txt 2>&1
+          echo '' >> docs/phase3-cloud-startup-report.txt
+          echo '--- WEB LOG ---' >> docs/phase3-cloud-startup-report.txt
+          cat /tmp/cloud-startup-web.log >> docs/phase3-cloud-startup-report.txt 2>&1 || true
+          kill $web_pid || true
+          cat docs/phase3-cloud-startup-report.txt
+      - name: Commit report and remove workflow
+        if: always()
+        run: |
+          rm -f .github/workflows/diagnose-cloud-startup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/phase3-cloud-startup-report.txt .github/workflows/diagnose-cloud-startup.yml
+          git commit -m 'Record Phase 3 Cloud startup diagnostic' || exit 0
+          git push origin HEAD:cloud-erp-phase3-online-core
