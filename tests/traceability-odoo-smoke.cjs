@@ -49,11 +49,13 @@ let diagnosticPage = null;
   await page.waitForSelector('#sg-demo-trace-btn', { state: 'visible' });
   const ids = await page.evaluate(async () => {
     const d = App.SGOdooTrace.DEMO;
-    await App.SGOdooTrace.createDemoScenario();
-    await App.refreshAll();
-    App.navigate('traceLots');
+    await App.createFerreDemoScenario();
+    const lot = await DB.get('lots', d.lotId);
+    if (!lot) throw new Error('Butoni demonstrues nuk krijoi lotin në IndexedDB.');
     return { lotId: d.lotId, saleId: d.saleId, batchId: d.batchId, lotNumber: d.lotNumber, batchNumber: d.batchNumber };
   });
+  await page.waitForFunction(id => (App.data.lots || []).some(x => x.id === id), ids.lotId, { timeout: 30000 });
+  await page.evaluate(() => App.view_traceLots());
   await page.waitForSelector(`tr[data-lot-id="${ids.lotId}"]`, { timeout: 30000 });
   await page.evaluate(id => App.openLotOdoo(id), ids.lotId);
   await page.waitForSelector('.sg-odoo-record-header', { state: 'visible', timeout: 30000 });

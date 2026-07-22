@@ -1,0 +1,174 @@
+name: Test Phase 3 Cloud ERP Core
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/cloud-erp-adapter.*'
+      - 'apps/web/package.json'
+      - 'scripts/patch-cloud-erp.cjs'
+      - 'scripts/patch-odoo-traceability.cjs'
+      - 'tests/cloud-erp-adapter-smoke.cjs'
+      - '.github/workflows/test-phase3-cloud-core.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloud-core-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_cloud_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_cloud_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_cloud_test
+      JWT_SECRET: phase3-cloud-core-ci-secret-minimum-32-characters-2026
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Validate API and web source
+        run: |
+          (cd apps/api && npm ci --workspaces=false && npm run check)
+          (cd apps/web && npm ci --workspaces=false)
+          node --check apps/web/cloud-erp-adapter.js
+          node --check scripts/patch-cloud-erp.cjs
+          node --check scripts/patch-odoo-traceability.cjs
+          node --check tests/cloud-erp-adapter-smoke.cjs
+
+      - name: Test PostgreSQL setup lock and cloud bootstrap
+        id: api_test
+        continue-on-error: true
+        run: |
+          set +e
+          (
+            set -euxo pipefail
+            cd apps/api
+            node src/server.js > /tmp/genit-cloud-api.log 2>&1 &
+            api_pid=$!
+            for attempt in $(seq 1 45); do
+              curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && break
+              sleep 1
+            done
+            curl --fail --silent http://127.0.0.1:3000/api/health
+            curl --fail --silent http://127.0.0.1:3000/api/setup/status > /tmp/setup-before.json
+            cat /tmp/setup-before.json
+            node -e "const x=require('/tmp/setup-before.json');if(x.needsSetup!==true)process.exit(1)"
+            curl --fail --silent -X POST http://127.0.0.1:3000/api/setup/admin \
+              -H 'Content-Type: application/json' \
+              --data '{"organizationName":"Genit CI","companyName":"Kompania CI","companyNipt":"L12345678A","warehouseName":"Magazina Qendrore","adminName":"Administrator CI","username":"admin_ci","email":"admin-ci@example.com","password":"AdminCloud123"}' \
+              > /tmp/setup.json
+            cat /tmp/setup.json
+            TOKEN=$(node -e "const x=require('/tmp/setup.json');if(!x.token)process.exit(1);process.stdout.write(x.token)")
+            code=$(curl --silent --output /tmp/setup-duplicate.json --write-out '%{http_code}' -X POST http://127.0.0.1:3000/api/setup/admin \
+              -H 'Content-Type: application/json' \
+              --data '{"organizationName":"Duplicate","companyName":"Duplicate","warehouseName":"Duplicate","adminName":"Duplicate","username":"duplicate","password":"Duplicate123"}')
+            cat /tmp/setup-duplicate.json
+            test "$code" = "409"
+            curl --fail --silent http://127.0.0.1:3000/api/cloud/capabilities -H "Authorization: Bearer $TOKEN" > /tmp/capabilities.json
+            cat /tmp/capabilities.json
+            node -e "const x=require('/tmp/capabilities.json');if(x.mode!=='CLOUD_POSTGRESQL'||x.sourceOfTruth!=='POSTGRESQL'||x.multiUser!==true||x.tenantIsolation!==true)process.exit(1)"
+            curl --fail --silent http://127.0.0.1:3000/api/cloud/bootstrap -H "Authorization: Bearer $TOKEN" > /tmp/bootstrap.json
+            cat /tmp/bootstrap.json
+            node -e "const x=require('/tmp/bootstrap.json');if(!x.user||x.companies.length!==1||x.warehouses.length!==1||x.access.companyIds.length!==1||x.access.warehouseIds.length!==1)process.exit(1)"
+            curl --fail --silent http://127.0.0.1:3000/api/setup/status > /tmp/setup-after.json
+            cat /tmp/setup-after.json
+            node -e "const x=require('/tmp/setup-after.json');if(x.needsSetup!==false)process.exit(1)"
+            kill $api_pid
+          ) > /tmp/phase3-api-test.log 2>&1
+          status=$?
+          echo '' >> /tmp/phase3-api-test.log
+          echo '--- API SERVER LOG ---' >> /tmp/phase3-api-test.log
+          cat /tmp/genit-cloud-api.log >> /tmp/phase3-api-test.log 2>&1 || true
+          cat /tmp/phase3-api-test.log
+          exit $status
+
+      - name: Upload API diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-api-test-report
+          path: /tmp/phase3-api-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce API result
+        if: steps.api_test.outcome != 'success'
+        run: exit 1
+
+      - name: Build exact HTML with Cloud adapter
+        working-directory: apps/web
+        env:
+          VITE_API_URL: http://127.0.0.1:3100
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: |
+          npm run build
+          cmp index.html dist/index.html
+          grep -q 'SG_CLOUD_ERP_ADAPTER_START' dist/index.html
+          grep -q 'cloud-first-admin-form' dist/index.html
+          grep -q 'http://127.0.0.1:3100' dist/index.html
+          grep -q 'SG_ODOO_TRACEABILITY_ACTIONS_START' dist/index.html
+
+      - name: Install browser runtime
+        run: |
+          mkdir -p /tmp/genit-cloud-browser
+          cd /tmp/genit-cloud-browser
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Verify central administrator and cloud master data writes
+        id: browser_test
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/phase3-cloud-browser
+          cd apps/web
+          PORT=4173 npm run start > /tmp/genit-cloud-web.log 2>&1 &
+          web_pid=$!
+          for attempt in $(seq 1 45); do
+            curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
+            sleep 1
+          done
+          cd ../..
+          set +e
+          NODE_PATH=/tmp/genit-cloud-browser/node_modules TEST_URL=http://127.0.0.1:4173 node tests/cloud-erp-adapter-smoke.cjs > /tmp/phase3-cloud-browser/browser.txt 2>&1
+          status=$?
+          echo '' >> /tmp/phase3-cloud-browser/browser.txt
+          echo '--- WEB SERVER LOG ---' >> /tmp/phase3-cloud-browser/browser.txt
+          cat /tmp/genit-cloud-web.log >> /tmp/phase3-cloud-browser/browser.txt 2>&1 || true
+          kill $web_pid || true
+          cat /tmp/phase3-cloud-browser/browser.txt
+          exit $status
+
+      - name: Upload Cloud browser report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-cloud-browser-report
+          path: /tmp/phase3-cloud-browser/browser.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Cloud browser result
+        if: steps.browser_test.outcome != 'success'
+        run: exit 1

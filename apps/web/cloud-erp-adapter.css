@@ -1,0 +1,5 @@
+.sg-cloud-auth-badge{margin:10px 0 14px;padding:8px 10px;border-radius:8px;background:#e8f0f8;color:#245b8f;font-size:12px;font-weight:700;text-align:center;border:1px solid #bdd2e8}
+.sg-cloud-endpoint{margin-top:14px;font-size:10px;color:#777;word-break:break-all;text-align:center}
+.sg-cloud-status{margin-left:auto;display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #b9dfca;border-radius:999px;background:#eaf7ef;color:#236544;font-size:11px;line-height:1}
+.sg-cloud-status small{color:#5b6e62;font-weight:500}.sg-cloud-dot{width:8px;height:8px;border-radius:50%;background:#2d8659;box-shadow:0 0 0 3px rgba(45,134,89,.15)}
+@media(max-width:768px){.sg-cloud-status{position:fixed;right:10px;bottom:10px;z-index:1200;box-shadow:0 2px 12px rgba(0,0,0,.15)}.sg-cloud-status small{display:none}}
