@@ -1,0 +1,12 @@
+.sg-p4-origin-panel{margin:14px 0 18px;padding:16px;border:1px solid #c7d9cf;border-radius:12px;background:linear-gradient(180deg,#f7fbf8,#edf6f0)}
+.sg-p4-origin-panel h4{margin:0 0 5px;color:#24583b}.sg-p4-origin-panel .hint{margin:0 0 13px;color:#607268;font-size:12px}
+.sg-p4-origin-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.sg-p4-origin-grid .form-group{margin:0}
+.sg-p4-auto-lot{padding:10px 12px;border:1px dashed #75a98a;border-radius:9px;background:#fff;color:#28583e;font-size:12px;font-weight:700}
+.sg-p4-flow{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:10px 0 16px}.sg-p4-flow span{padding:7px 10px;border-radius:999px;background:#eef4f8;border:1px solid #ccd9e2;font-size:11px;font-weight:700}.sg-p4-flow b{color:#7a8d81}
+.sg-p4-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.sg-p4-kpi{padding:12px;border:1px solid #d6e0da;border-radius:10px;background:#fff}.sg-p4-kpi small{display:block;color:#6c7a72}.sg-p4-kpi strong{font-size:18px;color:#214e34}
+.sg-p4-timeline{position:relative;margin:14px 0;padding-left:26px}.sg-p4-timeline:before{content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;background:#c8d8cf}.sg-p4-step{position:relative;margin:0 0 12px;padding:11px 13px;border:1px solid #d7e1db;border-radius:10px;background:#fff}.sg-p4-step:before{content:"";position:absolute;left:-23px;top:15px;width:10px;height:10px;border-radius:50%;background:#2f7b50;border:3px solid #e9f3ed}.sg-p4-step h5{margin:0 0 5px;color:#24583b}.sg-p4-step p{margin:2px 0;color:#56655d;font-size:12px}
+.sg-p4-no-manual{padding:12px 14px;border-left:4px solid #2f7b50;background:#edf7f1;margin-bottom:14px}.sg-p4-no-manual strong{color:#205537}
+.sg-p4-action-primary{box-shadow:0 3px 10px rgba(35,108,68,.18)}
+@media(max-width:980px){.sg-p4-origin-grid,.sg-p4-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.sg-p4-origin-grid,.sg-p4-kpis{grid-template-columns:1fr}.sg-p4-flow{align-items:stretch}.sg-p4-flow span{width:100%;text-align:center}.sg-p4-flow b{display:none}}
+@media print{.sg-p4-origin-panel{background:#fff;border-color:#999}.sg-p4-no-manual,.no-print{display:none!important}}
