@@ -1,0 +1,15 @@
+page.waitForSelector: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator('#app-shell') to be visible
+    63 × locator resolved to hidden <div class="app" id="app-shell">…</div>
+
+    at /home/runner/work/sistemi-genit-cloud/sistemi-genit-cloud/tests/traceability-odoo-smoke.cjs:31:14
+
+--- WEB SERVER LOG ---
+npm warn config ignoring workspace config at /home/runner/work/sistemi-genit-cloud/sistemi-genit-cloud/apps/web/.npmrc
+
+> sistemi-genit-web@1.0.0 start
+> vite preview --host 0.0.0.0 --port ${PORT:-4173}
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m4173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.1.0.18:[1m4173[22m/[39m
