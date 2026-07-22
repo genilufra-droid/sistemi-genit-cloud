@@ -8,6 +8,7 @@ on:
       - 'apps/web/cloud-erp-adapter.*'
       - 'apps/web/package.json'
       - 'scripts/patch-cloud-erp.cjs'
+      - 'scripts/patch-odoo-traceability.cjs'
       - 'tests/cloud-erp-adapter-smoke.cjs'
       - '.github/workflows/test-phase3-cloud-core.yml'
   pull_request:
@@ -52,6 +53,7 @@ jobs:
           (cd apps/web && npm ci --workspaces=false)
           node --check apps/web/cloud-erp-adapter.js
           node --check scripts/patch-cloud-erp.cjs
+          node --check scripts/patch-odoo-traceability.cjs
           node --check tests/cloud-erp-adapter-smoke.cjs
 
       - name: Test PostgreSQL setup lock and cloud bootstrap
@@ -136,14 +138,37 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
 
       - name: Verify central administrator and cloud master data writes
+        id: browser_test
+        continue-on-error: true
         run: |
+          mkdir -p /tmp/phase3-cloud-browser
           cd apps/web
           npm run start > /tmp/genit-cloud-web.log 2>&1 &
           web_pid=$!
-          trap 'kill $web_pid || true; cat /tmp/genit-cloud-web.log || true' EXIT
           for attempt in $(seq 1 45); do
             curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
             sleep 1
           done
           cd ../..
-          NODE_PATH=/tmp/genit-cloud-browser/node_modules TEST_URL=http://127.0.0.1:4173 node tests/cloud-erp-adapter-smoke.cjs
+          set +e
+          NODE_PATH=/tmp/genit-cloud-browser/node_modules TEST_URL=http://127.0.0.1:4173 node tests/cloud-erp-adapter-smoke.cjs > /tmp/phase3-cloud-browser/browser.txt 2>&1
+          status=$?
+          echo '' >> /tmp/phase3-cloud-browser/browser.txt
+          echo '--- WEB SERVER LOG ---' >> /tmp/phase3-cloud-browser/browser.txt
+          cat /tmp/genit-cloud-web.log >> /tmp/phase3-cloud-browser/browser.txt 2>&1 || true
+          kill $web_pid || true
+          cat /tmp/phase3-cloud-browser/browser.txt
+          exit $status
+
+      - name: Upload Cloud browser report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-cloud-browser-report
+          path: /tmp/phase3-cloud-browser/browser.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Cloud browser result
+        if: steps.browser_test.outcome != 'success'
+        run: exit 1
