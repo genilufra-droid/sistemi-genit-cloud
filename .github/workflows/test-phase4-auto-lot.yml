@@ -5,6 +5,7 @@ on:
     branches: [phase4-full-traceability-operations]
     paths:
       - 'apps/api/**'
+      - 'scripts/patch-phase4-weight-draft-api.py'
       - '.github/workflows/test-phase4-auto-lot.yml'
       - '.github/workflows/add-phase4-weight-draft-api.yml'
   pull_request:
@@ -44,17 +45,7 @@ jobs:
           fetch-depth: 0
       - name: Apply pending online weight draft routes
         run: |
-          if [ -f .github/workflows/add-phase4-weight-draft-api.yml ]; then
-            python3 <<'PY'
-          from pathlib import Path
-          import textwrap
-          source=Path('.github/workflows/add-phase4-weight-draft-api.yml').read_text().splitlines()
-          start=next(i for i,line in enumerate(source) if "python3 <<'PY'" in line)
-          end=next(i for i,line in enumerate(source[start+1:],start+1) if line.strip()=='PY')
-          code=textwrap.dedent('\n'.join(source[start+1:end]))
-          exec(compile(code,'phase4-weight-draft-patch.py','exec'))
-          PY
-          fi
+          python3 scripts/patch-phase4-weight-draft-api.py
           grep -q "app.post('/api/trace/weights'" apps/api/src/phase4-traceability.js
           grep -q "app.patch('/api/trace/weights/:id'" apps/api/src/phase4-traceability.js
       - name: Validate source
@@ -104,7 +95,7 @@ jobs:
           const posted=await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE',botanicalName:'Rubus fruticosus',plantPart:'Gjethe',notes:'Loti krijohet automatikisht'})});
           if(Number(posted.lot.quantityCreated)!==200||Number(posted.lot.quantityAvailable)!==200) throw new Error('Loti automatik nuk ka 200 kg.');
           if(posted.lot.lotNumber!=='RAW-GJF-20260722-0001') throw new Error(`Numri automatik i lotit gabim: ${posted.lot.lotNumber}`);
-          if(posted.receipt.documentNo!=='FH-2026-000001') throw new Error(`Numri i Flete-Hyrjes gabim: ${posted.receipt.documentNo}`);
+          if(posted.receipt.documentNo!=='FH-2026-000001') throw new Error(`Numri i Fletë-Hyrjes gabim: ${posted.receipt.documentNo}`);
           let duplicateBlocked=false, editAfterPostBlocked=false;
           try{await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE'})});}catch(e){duplicateBlocked=e.status===409;}
           try{await request(`/api/trace/weights/${weight.id}`,{method:'PATCH',headers:auth,body:JSON.stringify(draftPayload)});}catch(e){editAfterPostBlocked=e.status===409;}
