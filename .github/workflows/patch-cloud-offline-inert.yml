@@ -1,0 +1,59 @@
+name: Patch Cloud adapter inert offline mode
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - '.github/workflows/patch-cloud-offline-inert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
+
+      - name: Disable Cloud overrides only for isolated offline builds
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/cloud-erp-adapter.js')
+          s = p.read_text()
+          anchor = "  var REQUIRED = cfg.required !== false;\n"
+          block = "  var REQUIRED = cfg.required !== false;\n  if (!API_URL && !REQUIRED) {\n    global.CloudERP = { apiUrl: '', required: false, offlineTestMode: true };\n    return;\n  }\n"
+          if block not in s:
+              if anchor not in s:
+                  raise SystemExit('Cloud configuration anchor missing')
+              s = s.replace(anchor, block, 1)
+          p.write_text(s)
+          PY
+          node --check apps/web/cloud-erp-adapter.js
+          grep -q "offlineTestMode: true" apps/web/cloud-erp-adapter.js
+
+      - name: Verify offline and Cloud builds
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          GENIT_CLOUD_REQUIRED=false npm run build
+          grep -q '"required":false' dist/index.html
+          grep -q 'offlineTestMode: true' dist/index.html
+          rm -rf dist
+          VITE_API_URL=http://127.0.0.1:3100 GENIT_CLOUD_REQUIRED=true npm run build
+          grep -q '"required":true' dist/index.html
+          grep -q 'http://127.0.0.1:3100' dist/index.html
+
+      - name: Commit correction and remove workflow
+        run: |
+          rm -f .github/workflows/patch-cloud-offline-inert.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/cloud-erp-adapter.js .github/workflows/patch-cloud-offline-inert.yml
+          git commit -m 'Keep Cloud adapter inert in isolated offline tests'
+          git push origin HEAD:cloud-erp-phase3-online-core
