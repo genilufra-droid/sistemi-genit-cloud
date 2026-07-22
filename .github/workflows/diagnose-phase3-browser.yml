@@ -1,0 +1,64 @@
+name: Diagnose Phase 3 Cloud browser
+
+on:
+  push:
+    branches: [cloud-erp-phase3-online-core]
+    paths:
+      - '.github/workflows/diagnose-phase3-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cloud-erp-phase3-online-core
+          fetch-depth: 0
+      - name: Build exact Cloud HTML
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          VITE_API_URL=http://127.0.0.1:3100 GENIT_CLOUD_REQUIRED=true npm run build
+      - name: Install Chromium
+        run: |
+          mkdir -p /tmp/genit-cloud-browser
+          cd /tmp/genit-cloud-browser
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Execute and capture browser test
+        id: browser
+        continue-on-error: true
+        run: |
+          mkdir -p docs
+          cd apps/web
+          npm run start > /tmp/genit-cloud-web.log 2>&1 &
+          web_pid=$!
+          for attempt in $(seq 1 45); do
+            curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
+            sleep 1
+          done
+          cd ../..
+          set +e
+          NODE_PATH=/tmp/genit-cloud-browser/node_modules TEST_URL=http://127.0.0.1:4173 node tests/cloud-erp-adapter-smoke.cjs > docs/phase3-cloud-browser-report.txt 2>&1
+          status=$?
+          echo '' >> docs/phase3-cloud-browser-report.txt
+          echo '--- WEB SERVER LOG ---' >> docs/phase3-cloud-browser-report.txt
+          cat /tmp/genit-cloud-web.log >> docs/phase3-cloud-browser-report.txt 2>&1 || true
+          kill $web_pid || true
+          cat docs/phase3-cloud-browser-report.txt
+          exit $status
+      - name: Commit report and remove workflow
+        if: always()
+        run: |
+          rm -f .github/workflows/diagnose-phase3-browser.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/phase3-cloud-browser-report.txt .github/workflows/diagnose-phase3-browser.yml
+          git commit -m 'Record Phase 3 Cloud browser diagnostic' || exit 0
+          git push origin HEAD:cloud-erp-phase3-online-core
