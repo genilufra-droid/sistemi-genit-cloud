@@ -20,16 +20,21 @@ jobs:
           ref: exact-html-online
           fetch-depth: 0
 
-      - name: Fetch verified HTML package
+      - name: Verify and assemble HTML package
         run: |
           set -euo pipefail
-          git fetch origin html-6-4-online:refs/remotes/origin/html-6-4-online
+          git branch -r
+          git cat-file -e origin/html-6-4-online^{commit}
           : > /tmp/sistemi-genit.b64
           for i in 00 01 02 03 04 05 06 07; do
-            git show "origin/html-6-4-online:html64-source/xz-$i.b64" >> /tmp/sistemi-genit.b64
+            path="html64-source/xz-$i.b64"
+            git cat-file -e "origin/html-6-4-online:$path"
+            git show "origin/html-6-4-online:$path" >> /tmp/sistemi-genit.b64
           done
           tr -d '\r\n\t ' < /tmp/sistemi-genit.b64 > /tmp/sistemi-genit.clean.b64
+          test "$(wc -c < /tmp/sistemi-genit.clean.b64)" -gt 1000000
           base64 --decode /tmp/sistemi-genit.clean.b64 > /tmp/sistemi-genit.xz
+          test "$(wc -c < /tmp/sistemi-genit.xz)" -gt 700000
           xz --test /tmp/sistemi-genit.xz
 
       - name: Restore exact single HTML
