@@ -13,7 +13,8 @@ let html = fs.readFileSync(htmlPath, 'utf8');
 const js = fs.readFileSync(jsPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
 const apiUrl = String(process.env.VITE_API_URL || process.env.GENIT_API_URL || '').replace(/\/+$/, '');
-const required = String(process.env.GENIT_CLOUD_REQUIRED || 'true').toLowerCase() !== 'false';
+const requiredEnv = process.env.GENIT_CLOUD_REQUIRED;
+const required = requiredEnv == null || requiredEnv === '' ? Boolean(apiUrl) : String(requiredEnv).toLowerCase() !== 'false';
 const config = JSON.stringify({ apiUrl, required, build: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'local' }).replace(/</g, '\\u003c');
 const block = `${start}\n<style id="sg-cloud-erp-adapter-style">\n${css}\n</style>\n<script id="sg-cloud-erp-config">window.__GENIT_CLOUD_CONFIG__=${config};</script>\n<script id="sg-cloud-erp-adapter-script">\n${js}\n</script>\n${end}`;
 
@@ -33,4 +34,4 @@ if (!check.includes(`"apiUrl":"${apiUrl.replace(/"/g, '\\"')}"`)) throw new Erro
 const markerIndex = check.indexOf(start);
 const finalBodyIndex = check.toLowerCase().lastIndexOf('</body>');
 if (markerIndex < 0 || markerIndex > finalBodyIndex) throw new Error('Cloud patch nuk u vendos para </body> të fundit.');
-console.log(`Cloud patched ${htmlPath}: API=${apiUrl || '(missing)'}; ${Buffer.byteLength(check)} bytes`);
+console.log(`Cloud patched ${htmlPath}: API=${apiUrl || '(missing)'}; required=${required}; ${Buffer.byteLength(check)} bytes`);
