@@ -17,12 +17,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: odoo-traceability-actions
-      - name: Extract export APIs
+      - name: Extract authentication startup source
         run: |
           node <<'NODE'
           const fs=require('fs');
           const lines=fs.readFileSync('apps/web/index.html','utf8').split(/\r?\n/);
-          const terms=['PDFEngine','exportPDF','toPDF','downloadPDF','printHtml','printDocument','XLSX.writeFile','writeFile(','exportTrace','pdfFrom','openPrint'];
+          const terms=['first-admin-form','setup-display-name','login-form','login-username','app-shell','first-admin','showFirstAdmin','renderLogin','showLogin'];
           const out=[];
           for(const term of terms){
             out.push(`\n===== ${term} =====`);
@@ -31,18 +31,18 @@ jobs:
               if(!lines[i].includes(term)) continue;
               n++;
               out.push(`--- ${n} @ ${i+1} ---`);
-              for(let j=Math.max(0,i-8);j<Math.min(lines.length,i+20);j++) out.push(`${j+1}: ${lines[j]}`);
-              if(n>=10) break;
+              for(let j=Math.max(0,i-18);j<Math.min(lines.length,i+42);j++) out.push(`${j+1}: ${lines[j]}`);
+              if(n>=8) break;
             }
             if(!n) out.push('NO MATCH');
           }
           fs.mkdirSync('docs',{recursive:true});
-          fs.writeFileSync('docs/export-api-snippets.txt',out.join('\n'));
+          fs.writeFileSync('docs/auth-startup-snippets.txt',out.join('\n'));
           NODE
       - name: Commit report
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/export-api-snippets.txt
-          git commit -m 'Inspect print PDF and Excel APIs'
+          git add docs/auth-startup-snippets.txt
+          git commit -m 'Inspect authentication startup source'
           git push origin odoo-traceability-actions
