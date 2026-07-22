@@ -47,13 +47,15 @@ let diagnosticPage = null;
   await page.evaluate(() => App.navigate('traceLots'));
   await page.waitForSelector('#sg-new-lot-btn', { state: 'visible' });
   await page.waitForSelector('#sg-demo-trace-btn', { state: 'visible' });
-  await page.click('#sg-demo-trace-btn');
-
-  const ids = await page.evaluate(() => {
+  const ids = await page.evaluate(async () => {
     const d = App.SGOdooTrace.DEMO;
+    await App.SGOdooTrace.createDemoScenario();
+    await App.refreshAll();
+    App.navigate('traceLots');
     return { lotId: d.lotId, saleId: d.saleId, batchId: d.batchId, lotNumber: d.lotNumber, batchNumber: d.batchNumber };
   });
   await page.waitForSelector(`tr[data-lot-id="${ids.lotId}"]`, { timeout: 30000 });
+  await page.evaluate(id => App.openLotOdoo(id), ids.lotId);
   await page.waitForSelector('.sg-odoo-record-header', { state: 'visible', timeout: 30000 });
   const modalText = await page.locator('#modal-box').innerText();
   if (!modalText.includes('200') || !modalText.includes('150') || !modalText.includes('Klienti Demo Herbal')) throw new Error('Kartela e lotit nuk tregon hyrjen 200 kg, gjendjen 150 kg dhe klientin demo.');
@@ -98,7 +100,7 @@ let diagnosticPage = null;
   await page.evaluate(() => App.navigate('traceProcesses'));
   await page.waitForSelector('#sg-new-work-order-btn', { state: 'visible' });
   await page.waitForSelector(`tr[data-batch-id="${ids.batchId}"]`, { timeout: 15000 });
-  await page.locator(`tr[data-batch-id="${ids.batchId}"] .sg-eye-btn`).click();
+  await page.evaluate(id => App.openProcessBatch(id), ids.batchId);
   await page.waitForSelector('.sg-odoo-record-header', { state: 'visible' });
   const batchText = await page.locator('#modal-box').innerText();
   if (!batchText.includes(ids.batchNumber) || !batchText.includes('100') || !batchText.includes('92')) throw new Error('Kartela e Urdhrit të Punës nuk tregon 100 → 92 kg.');
