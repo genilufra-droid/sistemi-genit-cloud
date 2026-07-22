@@ -6,12 +6,13 @@ on:
     paths:
       - 'apps/api/**'
       - '.github/workflows/test-phase4-auto-lot.yml'
+      - '.github/workflows/add-phase4-weight-draft-api.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   auto-lot:
@@ -41,6 +42,21 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - name: Apply pending online weight draft routes
+        run: |
+          if [ -f .github/workflows/add-phase4-weight-draft-api.yml ]; then
+            python3 <<'PY'
+          from pathlib import Path
+          import textwrap
+          source=Path('.github/workflows/add-phase4-weight-draft-api.yml').read_text().splitlines()
+          start=next(i for i,line in enumerate(source) if "python3 <<'PY'" in line)
+          end=next(i for i,line in enumerate(source[start+1:],start+1) if line.strip()=='PY')
+          code=textwrap.dedent('\n'.join(source[start+1:end]))
+          exec(compile(code,'phase4-weight-draft-patch.py','exec'))
+          PY
+          fi
+          grep -q "app.post('/api/trace/weights'" apps/api/src/phase4-traceability.js
+          grep -q "app.patch('/api/trace/weights/:id'" apps/api/src/phase4-traceability.js
       - name: Validate source
         run: |
           cd apps/api
@@ -58,7 +74,7 @@ jobs:
           done
           cat /tmp/phase4-api.log
           exit 1
-      - name: Verify automatic lot transaction
+      - name: Verify draft, automatic lot and traceability transaction
         id: phase4_test
         continue-on-error: true
         run: |
@@ -80,27 +96,32 @@ jobs:
           const supplier=await request('/api/partners',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,partnerType:'SUPPLIER',code:'FER-001',name:'Fermeri Test',nipt:'K00000000T',address:'Skrapar',city:'Skrapar',phone:'',email:'',creditLimit:0,active:true})});
           const farm=await request('/api/trace/farms',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,supplierId:supplier.id,code:'FERMA-001',name:'Ferma Mali i Tomorrit',sourceTypeDefault:'WILD_COLLECTION',country:'Shqiperi',region:'Berat',municipality:'Skrapar',village:'Gjerbes',locationName:'Mali i Tomorrit',latitude:40.52,longitude:20.22,notes:'Origjine test',active:true})});
           const parcel=await request('/api/trace/parcels',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,farmId:farm.id,code:'ZONA-04',name:'Zona e Mbledhjes 04',sourceType:'WILD_COLLECTION',country:'Shqiperi',region:'Berat',municipality:'Skrapar',village:'Gjerbes',locationName:'Shpatet e Tomorrit',latitude:40.52,longitude:20.22,areaHectares:2.5,notes:'Zone test',active:true})});
-          const weight=await request('/api/weights',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:product.id,documentNo:'PESH-2026-0001',documentDate:'2026-07-22',bagsCount:20,grossWeight:205,packagingWeight:5,discountPercent:0,unitPrice:100,vehiclePlate:'AA001AA',notes:'Pranim 200 kg'})});
+          const draftPayload={companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:product.id,documentDate:'2026-07-22',bagsCount:20,grossWeight:205,packagingWeight:5,discountPercent:0,unitPrice:100,vehiclePlate:'AA001AA',farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE',notes:'Pranim 200 kg'};
+          const weight=await request('/api/trace/weights',{method:'POST',headers:auth,body:JSON.stringify(draftPayload)});
+          if(weight.status!=='DRAFT'||weight.document_no!=='PESH-2026-000001'||Number(weight.accepted_weight)!==200) throw new Error('Drafti online ose numri PESH nuk është i saktë.');
+          const edited=await request(`/api/trace/weights/${weight.id}`,{method:'PATCH',headers:auth,body:JSON.stringify({...draftPayload,vehiclePlate:'AA002AA'})});
+          if(edited.vehicle_plate!=='AA002AA'||Number(edited.accepted_weight)!==200) throw new Error('Editimi i Draftit online dështoi.');
           const posted=await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE',botanicalName:'Rubus fruticosus',plantPart:'Gjethe',notes:'Loti krijohet automatikisht'})});
           if(Number(posted.lot.quantityCreated)!==200||Number(posted.lot.quantityAvailable)!==200) throw new Error('Loti automatik nuk ka 200 kg.');
-          if(!/^RAW-GJF-20260722-0001$/.test(posted.lot.lotNumber)) throw new Error(`Numri automatik i lotit gabim: ${posted.lot.lotNumber}`);
-          if(!/^FH-2026-000001$/.test(posted.receipt.documentNo)) throw new Error(`Numri i Flete-Hyrjes gabim: ${posted.receipt.documentNo}`);
-          let duplicateBlocked=false;
+          if(posted.lot.lotNumber!=='RAW-GJF-20260722-0001') throw new Error(`Numri automatik i lotit gabim: ${posted.lot.lotNumber}`);
+          if(posted.receipt.documentNo!=='FH-2026-000001') throw new Error(`Numri i Flete-Hyrjes gabim: ${posted.receipt.documentNo}`);
+          let duplicateBlocked=false, editAfterPostBlocked=false;
           try{await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE'})});}catch(e){duplicateBlocked=e.status===409;}
-          if(!duplicateBlocked) throw new Error('Postimi i dyfishte nuk u bllokua.');
+          try{await request(`/api/trace/weights/${weight.id}`,{method:'PATCH',headers:auth,body:JSON.stringify(draftPayload)});}catch(e){editAfterPostBlocked=e.status===409;}
+          if(!duplicateBlocked||!editAfterPostBlocked) throw new Error('Postimi i dyfishtë ose editimi pas postimit nuk u bllokua.');
           const lots=await request('/api/trace/lots',{headers:auth});
-          if(lots.length!==1||lots[0].lot_number!==posted.lot.lotNumber) throw new Error('Regjistri i loteve nuk ka saktesisht nje lot.');
+          if(lots.length!==1||lots[0].lot_number!==posted.lot.lotNumber) throw new Error('Regjistri i loteve nuk ka saktësisht një lot.');
           const trace=await request(`/api/trace/lots/${posted.lot.id}/360`,{headers:auth});
-          if(trace.lot.weight_document_no!=='PESH-2026-0001'||trace.lot.receipt_document_no!==posted.receipt.documentNo) throw new Error('Gjurmimi 360 nuk lidh peshimin dhe Flete-Hyrjen.');
-          if(trace.movements.length!==1||trace.movements[0].movement_type!=='RECEIPT_IN'||Number(trace.movements[0].balance_after)!==200) throw new Error('Lëvizja e lotit RECEIPT_IN mungon.');
+          if(trace.lot.weight_document_no!==weight.document_no||trace.lot.receipt_document_no!==posted.receipt.documentNo) throw new Error('Gjurmimi 360 nuk lidh peshimin dhe Fletë-Hyrjen.');
+          if(trace.movements.length!==1||trace.movements[0].movement_type!=='RECEIPT_IN'||Number(trace.movements[0].balance_after)!==200) throw new Error('Lëvizja RECEIPT_IN mungon.');
           const stock=await request('/api/stock',{headers:auth});
           const stockLine=stock.find(x=>x.product_id===product.id&&x.warehouse_id===warehouse.id);
           if(!stockLine||Number(stockLine.quantity_base)!==200) throw new Error('Stoku nuk është 200 kg.');
           const quality=await request(`/api/trace/lots/${posted.lot.id}/quality-check`,{method:'POST',headers:auth,body:JSON.stringify({result:'APPROVED',moisturePercent:9.2,impurityPercent:0.8,laboratoryReference:'LAB-001',notes:'Aprovuar'})});
-          if(quality.status!=='AVAILABLE') throw new Error('Aprovimi i cilesise nuk e beri lotin AVAILABLE.');
+          if(quality.status!=='AVAILABLE') throw new Error('Aprovimi i cilësisë nuk e bëri lotin AVAILABLE.');
           const traceAfter=await request(`/api/trace/lots/${posted.lot.id}/360`,{headers:auth});
-          if(traceAfter.qualityChecks.length!==1||traceAfter.lot.status!=='AVAILABLE') throw new Error('Kontrolli i cilesise nuk u ruajt ne gjurmen 360.');
-          console.log(JSON.stringify({result:'TEST_SUCCESS',weight:weight.document_no,receipt:posted.receipt.documentNo,lot:posted.lot.lotNumber,quantity:200,stock:200,quality:'AVAILABLE',duplicateBlocked,trace360:true},null,2));
+          if(traceAfter.qualityChecks.length!==1||traceAfter.lot.status!=='AVAILABLE') throw new Error('Kontrolli i cilësisë nuk u ruajt në gjurmën 360.');
+          console.log(JSON.stringify({result:'TEST_SUCCESS',weight:weight.document_no,receipt:posted.receipt.documentNo,lot:posted.lot.lotNumber,quantity:200,stock:200,quality:'AVAILABLE',draftCreated:true,draftEdited:true,duplicateBlocked,editAfterPostBlocked,trace360:true},null,2));
           NODE
           status=$?
           echo '' >> /tmp/phase4-report/test.log
@@ -119,6 +140,17 @@ jobs:
       - name: Enforce Phase 4 result
         if: steps.phase4_test.outcome != 'success'
         run: exit 1
+      - name: Commit verified draft routes
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && steps.phase4_test.outcome == 'success'
+        run: |
+          if [ -f .github/workflows/add-phase4-weight-draft-api.yml ]; then
+            rm -f .github/workflows/add-phase4-weight-draft-api.yml
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add apps/api/src/phase4-traceability.js .github/workflows/add-phase4-weight-draft-api.yml
+            git commit -m 'Add verified online weight draft routes'
+            git push origin HEAD:phase4-full-traceability-operations
+          fi
       - name: Stop API
         if: always()
         run: kill $(cat /tmp/phase4-api.pid) || true
