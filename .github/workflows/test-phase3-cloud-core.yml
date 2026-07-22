@@ -60,7 +60,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          {
+          (
             set -euxo pipefail
             cd apps/api
             node src/server.js > /tmp/genit-cloud-api.log 2>&1 &
@@ -94,7 +94,7 @@ jobs:
             cat /tmp/setup-after.json
             node -e "const x=require('/tmp/setup-after.json');if(x.needsSetup!==false)process.exit(1)"
             kill $api_pid
-          } > /tmp/phase3-api-test.log 2>&1
+          ) > /tmp/phase3-api-test.log 2>&1
           status=$?
           echo '' >> /tmp/phase3-api-test.log
           echo '--- API SERVER LOG ---' >> /tmp/phase3-api-test.log
