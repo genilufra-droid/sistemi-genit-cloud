@@ -10,10 +10,15 @@ const start = '<!-- SG_ODOO_TRACEABILITY_ACTIONS_START -->';
 const end = '<!-- SG_ODOO_TRACEABILITY_ACTIONS_END -->';
 
 let html = fs.readFileSync(htmlPath, 'utf8');
-const js = fs.readFileSync(jsPath, 'utf8');
+let js = fs.readFileSync(jsPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
-const block = `${start}\n<style id="sg-odoo-traceability-actions-style">\n${css}\n</style>\n<script id="sg-odoo-traceability-actions-script">\n${js}\n</script>\n${end}`;
 
+const oldSync = "await App.refreshAll(); var resultLot = await DB.get('lots', lot.id);";
+const verifiedSync = "await App.refreshAll(); App.data.lots = await DB.getAll('lots'); App.data.lotMovements = await DB.getAll('lotMovements'); App.data.processBatches = await DB.getAll('processBatches'); App.data.processBatchInputs = await DB.getAll('processBatchInputs'); App.data.salesInvoices = await DB.getAll('salesInvoices'); App.data.products = await DB.getAll('products'); var resultLot = await DB.get('lots', lot.id);";
+if (js.includes(oldSync)) js = js.replace(oldSync, verifiedSync);
+else if (!js.includes(verifiedSync)) throw new Error('Mungon pika e sinkronizimit të skenarit të lotit.');
+
+const block = `${start}\n<style id="sg-odoo-traceability-actions-style">\n${css}\n</style>\n<script id="sg-odoo-traceability-actions-script">\n${js}\n</script>\n${end}`;
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 html = html.replace(new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, 'g'), '');
@@ -28,6 +33,7 @@ if ((check.match(/SG_ODOO_TRACEABILITY_ACTIONS_START/g) || []).length !== 1) thr
 if (!check.includes('Test: Gjethe Ferre 200 → 50 kg')) throw new Error('Butoni demo mungon pas patch-it.');
 if (!check.includes('+ Urdhër Pune')) throw new Error('Butoni Urdhër Pune mungon pas patch-it.');
 if (!check.includes('+ Lot i Ri')) throw new Error('Butoni Lot i Ri mungon pas patch-it.');
+if (!check.includes(verifiedSync)) throw new Error('Sinkronizimi i verifikuar i lotit mungon nga HTML-ja finale.');
 const markerIndex = check.indexOf(start);
 const finalBodyIndex = check.toLowerCase().lastIndexOf('</body>');
 if (markerIndex < 0 || markerIndex > finalBodyIndex) throw new Error('Patch-i nuk u vendos para </body> të fundit.');
