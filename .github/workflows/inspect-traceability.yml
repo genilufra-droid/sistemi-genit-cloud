@@ -1,0 +1,54 @@
+name: Inspect traceability source
+
+on:
+  push:
+    branches: [odoo-traceability-actions]
+    paths:
+      - '.github/workflows/inspect-traceability.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: odoo-traceability-actions
+      - name: Extract relevant source sections
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const src = fs.readFileSync('apps/web/index.html','utf8');
+          const terms = [
+            'traceOrigins','traceLots','traceProcesses','traceQuality','traceReports','traceRecalls',
+            'Regjistri i Loteve','Ferma, Zona e Mbledhjes','Urdhër Pune','Urdher Pune',
+            'renderTrace','Traceability','trace_lots','trace_processes','lot_code','process_type'
+          ];
+          const lines = src.split(/\r?\n/);
+          const out = [];
+          for (const term of terms) {
+            out.push(`\n===== TERM: ${term} =====`);
+            let found = 0;
+            for (let i=0;i<lines.length;i++) {
+              if (!lines[i].includes(term)) continue;
+              found++;
+              out.push(`\n--- match ${found} at line ${i+1} ---`);
+              const a=Math.max(0,i-20), b=Math.min(lines.length,i+45);
+              for(let j=a;j<b;j++) out.push(`${j+1}: ${lines[j]}`);
+              if(found>=8) break;
+            }
+            if(!found) out.push('NO MATCH');
+          }
+          fs.mkdirSync('docs',{recursive:true});
+          fs.writeFileSync('docs/traceability-source-snippets.txt',out.join('\n'));
+          NODE
+      - name: Commit report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/traceability-source-snippets.txt
+          git commit -m 'Inspect traceability module source'
+          git push origin odoo-traceability-actions
