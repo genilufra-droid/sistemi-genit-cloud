@@ -19,6 +19,7 @@
   var access = { companyIds: [], warehouseIds: [] };
   var bootstrapData = null;
   var original = {
+    bootstrap: Auth.bootstrap,
     refreshAll: App.refreshAll,
     logout: Auth.logout,
     listUsers: Auth.listUsers,
@@ -314,7 +315,7 @@
       var restored=await restore();
       if(restored){await startApplication();return;}
       renderLogin();
-    } catch(e) { if(REQUIRED) renderConnectionError(e); else return original.logout(); }
+    } catch(e) { if(REQUIRED) renderConnectionError(e); else return original.bootstrap(); }
   }
   async function logout() {
     clearSession(); var shell=document.getElementById('app-shell'),root=document.getElementById('auth-root'),overlay=document.getElementById('modal-overlay');
