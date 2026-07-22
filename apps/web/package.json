@@ -7,8 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "dev": "npm run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}",
+    "build": "node scripts/build-html64.mjs",
     "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
