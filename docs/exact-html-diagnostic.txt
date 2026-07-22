@@ -1,0 +1,31 @@
+source_branch=origin/html-6-4-online
+Preparing worktree (detached HEAD 9ded626)
+HEAD is now at 9ded626 Use exact HTML 6.4 static build
+worktree_status=0
+part_00.bytes=20000
+part_00.sha256=422d29e82c5b4080a6447f342c9bb48d4ece6b226900f73a8908d6cb062f251c
+part_01.bytes=20000
+part_01.sha256=17c9643bd61c4c8ed66450ada9e845435854fbf6d54a1b071bcdc7598be6b39c
+part_02.bytes=20000
+part_02.sha256=a1d34aec5cf364dc95186a29e893b63e7f1da60d02452fc1b2164b708cf2bb24
+part_03.bytes=20000
+part_03.sha256=a84880e4583110a13b6b61fee1e4faa064ffecfd743a59de2790e837f49faa0a
+part_04.bytes=20000
+part_04.sha256=cb4bcd7b0a07de69aa299221a6511d457cff7fc97250a11df331db5b50143fc7
+part_05.bytes=20000
+part_05.sha256=6546d8ad424d93e2e0692c318d62cb04e211259ad826485061680a09ad3b6b14
+part_06.bytes=20000
+part_06.sha256=6514f907f3270176a2380666dc66b300deb8331a231b379e70bb4922339a463b
+part_07.bytes=20001
+part_07.sha256=521a6d1c0be69def7e46e8d781cb0569defe5748b46b312060533194964a30bc
+combined_base64_bytes=160001
+base64: invalid input
+base64_status=1
+xz_bytes=120000
+xz: /tmp/package.xz: Compressed data is corrupt
+xz_test_status=1
+xz: /tmp/package.xz: Compressed data is corrupt
+xz_decompress_status=1
+html_bytes=15522
+html_sha256=a0a920adb291ee7012b6e86b5b61ace0dfec1bf04bcfbaebe0367c57782c35ed
+doctype_status=0
