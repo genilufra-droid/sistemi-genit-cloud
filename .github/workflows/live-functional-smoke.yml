@@ -1,0 +1,101 @@
+name: Test every live HTML module
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install browser test runtime
+        run: |
+          mkdir -p /tmp/sg-browser-test
+          cd /tmp/sg-browser-test
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Test first setup and every module
+        working-directory: /tmp/sg-browser-test
+        run: |
+          cat > smoke.cjs <<'NODE'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext();
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
+            page.on('console', message => {
+              if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+            });
+
+            await page.goto('https://genit-web-production.up.railway.app/?v=html64-functional-final', {
+              waitUntil: 'domcontentloaded', timeout: 60000,
+            });
+            await page.waitForFunction(() => document.querySelector('#first-admin-form') || document.querySelector('#login-form') || document.querySelector('#app-shell'), null, { timeout: 30000 });
+
+            if (await page.locator('#first-admin-form').count()) {
+              await page.fill('#setup-display-name', 'Kontroll Automatik');
+              await page.fill('#setup-username', 'kontroll');
+              await page.fill('#setup-password', 'Kontroll123');
+              await page.fill('#setup-password-confirm', 'Kontroll123');
+              await page.click('#first-admin-form button[type="submit"]');
+            }
+
+            await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
+            await page.waitForSelector('#content', { state: 'attached' });
+
+            const views = await page.locator('.nav-item[data-view]').evaluateAll(nodes => nodes.map(node => node.dataset.view));
+            if (views.length < 45) throw new Error(`U gjetën vetëm ${views.length} module në menu.`);
+
+            const failures = [];
+            for (const view of views) {
+              const selector = `.nav-item[data-view="${view}"]`;
+              try {
+                await page.locator(selector).click();
+                await page.waitForTimeout(180);
+                const state = await page.evaluate(() => ({
+                  title: document.querySelector('#page-title')?.textContent?.trim() || '',
+                  content: document.querySelector('#content')?.innerText?.trim() || '',
+                }));
+                if (!state.title) failures.push(`${view}: mungon titulli`);
+                if (!state.content) failures.push(`${view}: përmbajtja është bosh`);
+              } catch (error) {
+                failures.push(`${view}: ${error.message}`);
+              }
+            }
+
+            const capabilities = await page.evaluate(() => ({
+              indexedDb: Boolean(window.indexedDB),
+              xlsx: Boolean(window.XLSX),
+              app: Boolean(window.App),
+              auth: Boolean(window.Auth),
+              print: typeof window.print === 'function',
+              pdfText: document.documentElement.innerText.includes('PDF'),
+              excelText: document.documentElement.innerText.includes('Excel'),
+              printText: document.documentElement.innerText.includes('Print'),
+            }));
+            for (const [key, value] of Object.entries(capabilities)) {
+              if (!value) failures.push(`kapaciteti ${key} mungon`);
+            }
+
+            if (errors.length) failures.push(...errors);
+            if (failures.length) {
+              console.error(failures.join('\n'));
+              throw new Error(`${failures.length} kontrolle dështuan.`);
+            }
+
+            console.log(`SUCCESS: ${views.length} module u hapën pa gabime.`);
+            console.log(JSON.stringify(capabilities));
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+          node smoke.cjs
