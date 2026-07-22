@@ -1,4 +1,4 @@
-name: Inspect traceability source
+name: Fix sales API binding
 
 on:
   push:
@@ -10,39 +10,30 @@ permissions:
   contents: write
 
 jobs:
-  inspect:
+  fix:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: odoo-traceability-actions
-      - name: Extract sales service API
+      - name: Bind demo to real sales services
         run: |
-          node <<'NODE'
-          const fs=require('fs');
-          const lines=fs.readFileSync('apps/web/index.html','utf8').split(/\r?\n/);
-          const terms=['saveSale','registerSale','postSale','saveSales','registerSales','commitSale','saveSaleInvoice','postSaleInvoice','saveInvoice','registerInvoice','Services =','global.Services','salePosting','SALE_OUT'];
-          const out=[];
-          for(const term of terms){
-            out.push(`\n===== ${term} =====`);
-            let n=0;
-            for(let i=0;i<lines.length;i++){
-              if(!lines[i].includes(term)) continue;
-              n++;
-              out.push(`--- ${n} @ ${i+1} ---`);
-              for(let j=Math.max(0,i-22);j<Math.min(lines.length,i+65);j++) out.push(`${j+1}: ${lines[j]}`);
-              if(n>=12) break;
-            }
-            if(!n) out.push('NO MATCH');
-          }
-          fs.mkdirSync('docs',{recursive:true});
-          fs.writeFileSync('docs/sales-service-api.txt',out.join('\n'));
-          NODE
-      - name: Commit report
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/odoo-traceability-actions.js')
+          s = p.read_text()
+          old = "if (typeof S.saveSale === 'function' && typeof S.registerSale === 'function') { await S.saveSale(invoice); await S.registerSale(DEMO.saleId); }"
+          new = "if (typeof S.saveSalesInvoice === 'function' && typeof S.registerSale === 'function') { await S.saveSalesInvoice(invoice); await S.registerSale(DEMO.saleId); }"
+          if old not in s:
+              raise SystemExit('Expected sales binding not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          node --check apps/web/odoo-traceability-actions.js
+      - name: Commit correction
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/sales-service-api.txt
-          git commit -m 'Inspect sales posting service API'
+          git add apps/web/odoo-traceability-actions.js
+          git commit -m 'Bind Gjethe Ferre scenario to real sales API'
           git push origin odoo-traceability-actions
