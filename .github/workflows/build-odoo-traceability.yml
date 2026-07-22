@@ -9,11 +9,15 @@ on:
       - 'apps/web/odoo-traceability-actions.js'
       - 'apps/web/odoo-traceability-actions.css'
       - 'scripts/patch-odoo-traceability.cjs'
+      - 'scripts/patch-cloud-erp.cjs'
       - 'tests/traceability-odoo-smoke.cjs'
       - '.github/workflows/build-odoo-traceability.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-test:
@@ -28,19 +32,22 @@ jobs:
         run: |
           echo "Testing commit $(git rev-parse HEAD)"
           node --check apps/web/odoo-traceability-actions.js
+          node --check apps/web/cloud-erp-adapter.js
           node --check scripts/patch-odoo-traceability.cjs
+          node --check scripts/patch-cloud-erp.cjs
           node --check tests/traceability-odoo-smoke.cjs
           grep -q 'patch-odoo-traceability.cjs' apps/web/package.json
           grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
           grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
           cd apps/web
-          npm ci
-          npm run build
+          npm ci --workspaces=false
+          GENIT_CLOUD_REQUIRED=false npm run build
           cmp index.html dist/index.html
           grep -q 'SG_ODOO_TRACEABILITY_ACTIONS_START' dist/index.html
           grep -q 'sg-demo-trace-btn' dist/index.html
           grep -q 'sg-new-work-order-btn' dist/index.html
           grep -q 'App.data.lotMovements = await DB.getAll' dist/index.html
+          grep -q '"required":false' dist/index.html
 
       - name: Install browser runtime
         run: |
@@ -51,14 +58,37 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
 
       - name: Verify Gjethe Ferre end-to-end scenario
+        id: browser_test
+        continue-on-error: true
         run: |
+          mkdir -p /tmp/sg-odoo-report
           cd apps/web
           npm run start > /tmp/sg-web.log 2>&1 &
           server_pid=$!
-          trap 'kill $server_pid || true; cat /tmp/sg-web.log || true' EXIT
           for attempt in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
             sleep 1
           done
           cd ../..
-          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs
+          set +e
+          NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs > /tmp/sg-odoo-report/browser.txt 2>&1
+          status=$?
+          echo '' >> /tmp/sg-odoo-report/browser.txt
+          echo '--- WEB SERVER LOG ---' >> /tmp/sg-odoo-report/browser.txt
+          cat /tmp/sg-web.log >> /tmp/sg-odoo-report/browser.txt 2>&1 || true
+          kill $server_pid || true
+          cat /tmp/sg-odoo-report/browser.txt
+          exit $status
+
+      - name: Upload Odoo browser report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odoo-traceability-browser-report
+          path: /tmp/sg-odoo-report/browser.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce Odoo browser result
+        if: steps.browser_test.outcome != 'success'
+        run: exit 1
