@@ -1,0 +1,70 @@
+name: Build exact HTML 6.4
+
+on:
+  push:
+    branches: [exact-html-online]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-exact-html:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: exact-html-online
+          fetch-depth: 0
+
+      - name: Restore exact original single HTML
+        run: |
+          set -euo pipefail
+          git cat-file -e 'b9518dec095cfea9ce00b401911f92e0b99403c5:legacy/Sistemi_Genit_Full_Single_6_4_Cash_Formats_MultiCompany.html'
+          git show 'b9518dec095cfea9ce00b401911f92e0b99403c5:legacy/Sistemi_Genit_Full_Single_6_4_Cash_Formats_MultiCompany.html' > apps/web/index.html
+          test "$(wc -c < apps/web/index.html)" = "1873046"
+          echo "7fbe7a11c20906076eaccb5c8e6c42946a6d3d9773cbeac33316cec160589bf6  apps/web/index.html" | sha256sum --check --strict
+          grep -qi '<!doctype html' apps/web/index.html
+          grep -qi 'Sistemi Genit' apps/web/index.html
+          grep -qi 'Mandat Arkëtimi' apps/web/index.html
+          grep -qi 'Fatura Blerjeje' apps/web/index.html
+          grep -qi 'Raporte Shitje' apps/web/index.html
+
+      - name: Configure static production build
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'apps/web/package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.scripts = {
+            ...(pkg.scripts || {}),
+            dev: 'npm run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}',
+            build: 'rm -rf dist && mkdir -p dist && cp index.html dist/index.html',
+            start: 'vite preview --host 0.0.0.0 --port ${PORT:-4173}'
+          };
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+      - name: Test exact static build
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+          cmp index.html dist/index.html
+          test "$(wc -c < dist/index.html)" = "1873046"
+          echo "7fbe7a11c20906076eaccb5c8e6c42946a6d3d9773cbeac33316cec160589bf6  dist/index.html" | sha256sum --check --strict
+
+      - name: Commit verified frontend
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/index.html apps/web/package.json
+          if git diff --cached --quiet; then
+            echo 'Exact frontend already committed.'
+            exit 0
+          fi
+          git commit -m 'Activate exact verified Sistemi Genit HTML 6.4 frontend'
+          git push origin exact-html-online
