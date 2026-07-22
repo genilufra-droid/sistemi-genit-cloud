@@ -9,6 +9,8 @@ on:
       - 'scripts/patch-odoo-traceability.cjs'
       - 'tests/traceability-odoo-smoke.cjs'
       - '.github/workflows/build-odoo-traceability.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -70,6 +72,7 @@ jobs:
           NODE_PATH=/tmp/sg-odoo-test/node_modules TEST_URL=http://127.0.0.1:4173 node tests/traceability-odoo-smoke.cjs
 
       - name: Commit tested generated HTML
+        if: github.event_name == 'push'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
