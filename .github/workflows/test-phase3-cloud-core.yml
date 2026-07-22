@@ -48,8 +48,8 @@ jobs:
 
       - name: Validate API and web source
         run: |
-          (cd apps/api && npm ci && npm run check)
-          (cd apps/web && npm ci)
+          (cd apps/api && npm ci --workspaces=false && npm run check)
+          (cd apps/web && npm ci --workspaces=false)
           node --check apps/web/cloud-erp-adapter.js
           node --check scripts/patch-cloud-erp.cjs
           node --check tests/cloud-erp-adapter-smoke.cjs
