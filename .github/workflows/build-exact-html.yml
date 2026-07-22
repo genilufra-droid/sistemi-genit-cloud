@@ -20,27 +20,23 @@ jobs:
           ref: exact-html-online
           fetch-depth: 0
 
-      - name: Verify and assemble HTML package
+      - name: Restore exact verified single HTML
         run: |
           set -euo pipefail
-          git branch -r
-          git cat-file -e origin/html-6-4-online^{commit}
-          : > /tmp/sistemi-genit.b64
-          for i in 00 01 02 03 04 05 06 07; do
-            path="html64-source/xz-$i.b64"
-            git cat-file -e "origin/html-6-4-online:$path"
-            git show "origin/html-6-4-online:$path" >> /tmp/sistemi-genit.b64
-          done
-          tr -d '\r\n\t ' < /tmp/sistemi-genit.b64 > /tmp/sistemi-genit.clean.b64
-          test "$(wc -c < /tmp/sistemi-genit.clean.b64)" -gt 1000000
-          base64 --decode /tmp/sistemi-genit.clean.b64 > /tmp/sistemi-genit.xz
-          test "$(wc -c < /tmp/sistemi-genit.xz)" -gt 700000
-          xz --test /tmp/sistemi-genit.xz
-
-      - name: Restore exact single HTML
-        run: |
-          set -euo pipefail
-          xz --decompress --stdout /tmp/sistemi-genit.xz > apps/web/index.html
+          rm -rf /tmp/html64-source-tree
+          git worktree add --detach /tmp/html64-source-tree origin/html-6-4-online
+          cat /tmp/html64-source-tree/html64-source/xz-00.b64 \
+              /tmp/html64-source-tree/html64-source/xz-01.b64 \
+              /tmp/html64-source-tree/html64-source/xz-02.b64 \
+              /tmp/html64-source-tree/html64-source/xz-03.b64 \
+              /tmp/html64-source-tree/html64-source/xz-04.b64 \
+              /tmp/html64-source-tree/html64-source/xz-05.b64 \
+              /tmp/html64-source-tree/html64-source/xz-06.b64 \
+              /tmp/html64-source-tree/html64-source/xz-07.b64 \
+            | tr -d '\r\n\t ' \
+            | base64 --decode \
+            | xz --decompress --stdout \
+            > apps/web/index.html
           test "$(wc -c < apps/web/index.html)" = "1873046"
           echo "7fbe7a11c20906076eaccb5c8e6c42946a6d3d9773cbeac33316cec160589bf6  apps/web/index.html" | sha256sum --check --strict
           grep -qi '<!doctype html' apps/web/index.html
