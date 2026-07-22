@@ -426,9 +426,14 @@ function DocumentsPage({ type, title, partnerType }) {
       : unit === product?.pallet_unit
         ? Number(product.pallet_coefficient || 1)
         : 1;
+    const basePrice = String(type).startsWith('PURCHASE')
+      ? Number(product?.purchase_price || 0)
+      : Number(product?.sale_price || 0);
     setForm((current) => ({
       ...current,
-      items: current.items.map((line, itemIndex) => itemIndex === index ? { ...line, unit, coefficient } : line),
+      items: current.items.map((line, itemIndex) => itemIndex === index
+        ? { ...line, unit, coefficient, unitPrice: basePrice * coefficient }
+        : line),
     }));
   };
 
@@ -477,7 +482,12 @@ function DocumentsPage({ type, title, partnerType }) {
     }
     if (kind === 'product') {
       setProducts((current) => [...current, record]);
-      selectProduct(context.index ?? 0, record.id);
+      setForm((current) => ({
+        ...current,
+        items: current.items.map((item, itemIndex) => itemIndex === (context.index ?? 0)
+          ? lineFromProduct(record, type, item)
+          : item),
+      }));
     }
     setQuick(null);
   };

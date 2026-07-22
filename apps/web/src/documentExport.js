@@ -124,8 +124,9 @@ export function buildDocumentHtml(rawDocument, fallbackTitle = 'Dokument') {
 }
 
 function openDocumentWindow(document, fallbackTitle, autoPrint = false) {
-  const popup = window.open('', '_blank', 'noopener,noreferrer');
+  const popup = window.open('', '_blank');
   if (!popup) throw new Error('Browseri bllokoi dritaren e dokumentit. Lejo pop-up për këtë faqe.');
+  popup.opener = null;
   popup.document.open();
   popup.document.write(buildDocumentHtml(document, fallbackTitle));
   popup.document.close();

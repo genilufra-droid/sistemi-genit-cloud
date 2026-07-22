@@ -207,6 +207,15 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         const items = await readItems(client,document.id);
         for(const item of items) {
           const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);
+          if (sign > 0) {
+            const available = await client.query(
+              'SELECT COALESCE(SUM(quantity_base),0)::numeric AS qty FROM stock_movements WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND product_id=$4',
+              [req.user.tenant_id,document.company_id,document.warehouse_id,item.product_id],
+            );
+            if (Number(available.rows[0].qty) + 1e-9 < quantityBase) {
+              throw requestError(`Anulimi do të krijonte stok negativ për ${item.description}.`,409);
+            }
+          }
           await insertStockMovement(client, {
             tenantId:req.user.tenant_id, companyId:document.company_id, warehouseId:document.warehouse_id,
             productId:item.product_id, movementType:`${document.doc_type}_CANCEL`, quantityBase:-sign*quantityBase,
