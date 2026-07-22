@@ -203,6 +203,7 @@ const api = http.createServer(async (req, res) => {
 
   await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
   await page.waitForSelector('#sg-cloud-status', { state: 'visible', timeout: 30000 });
+  await page.waitForFunction(() => Boolean(window.App && App.company && App.company.name === 'Kompania Cloud Test'), null, { timeout: 30000 });
   const cloudStatus = await page.locator('#sg-cloud-status').innerText();
   if (!cloudStatus.includes('Cloud PostgreSQL')) throw new Error('Statusi Cloud PostgreSQL mungon.');
   if (state.setupCalls !== 1) throw new Error(`Setup u thirr ${state.setupCalls} herë.`);
