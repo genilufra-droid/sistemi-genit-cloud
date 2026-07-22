@@ -1,0 +1,40 @@
+name: Verify deployed HTML 6.4
+
+on:
+  push:
+    branches: [exact-html-online]
+    paths:
+      - '.github/workflows/live-html-smoke.yml'
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for and verify Railway deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://genit-web-production.up.railway.app/?v=html64-final'
+          ok=0
+          for attempt in $(seq 1 15); do
+            echo "Attempt $attempt"
+            if curl --compressed --location --fail --silent --show-error --max-time 30 "$url" -o /tmp/live.html; then
+              bytes=$(wc -c < /tmp/live.html)
+              hash=$(sha256sum /tmp/live.html | cut -d' ' -f1)
+              echo "bytes=$bytes hash=$hash"
+              if [ "$bytes" = '1873046' ] && [ "$hash" = '7fbe7a11c20906076eaccb5c8e6c42946a6d3d9773cbeac33316cec160589bf6' ]; then
+                grep -qi '<!doctype html' /tmp/live.html
+                grep -qi 'Sistemi Genit' /tmp/live.html
+                grep -qi 'Mandat Arkëtimi' /tmp/live.html
+                grep -qi 'Fatura Blerjeje' /tmp/live.html
+                grep -qi 'Raporte Shitje' /tmp/live.html
+                grep -qi 'PDF' /tmp/live.html
+                grep -qi 'Excel' /tmp/live.html
+                grep -qi 'Print' /tmp/live.html
+                ok=1
+                break
+              fi
+            fi
+            sleep 10
+          done
+          test "$ok" = '1'
