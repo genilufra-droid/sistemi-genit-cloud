@@ -21,17 +21,23 @@ const block = `${start}\n<style id="sg-cloud-erp-adapter-style">\n${css}\n</styl
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 html = html.replace(new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, 'g'), '');
-const bodyIndex = html.toLowerCase().lastIndexOf('</body>');
+const lowerBefore = html.toLowerCase();
+const finalHtmlBefore = lowerBefore.lastIndexOf('</html>');
+const bodyIndex = lowerBefore.lastIndexOf('</body>');
 if (bodyIndex < 0) throw new Error('Mungon </body> në apps/web/index.html');
+if (finalHtmlBefore >= 0 && bodyIndex > finalHtmlBefore) throw new Error('Mbyllja </body> nuk është para </html>.');
 html = html.slice(0, bodyIndex) + block + '\n' + html.slice(bodyIndex);
 fs.writeFileSync(htmlPath, html);
 
 const check = fs.readFileSync(htmlPath, 'utf8');
 if ((check.match(/SG_CLOUD_ERP_ADAPTER_START/g) || []).length !== 1) throw new Error('Cloud patch nuk është idempotent.');
+if ((check.match(/SG_CLOUD_ERP_ADAPTER_END/g) || []).length !== 1) throw new Error('Fundi i Cloud patch mungon ose është i dyfishuar.');
 if (!check.includes('cloud-first-admin-form')) throw new Error('Formulari qendror i administratorit mungon.');
 if (!check.includes('CLOUD_POSTGRESQL') && !check.includes('CloudERP')) throw new Error('Adapteri Cloud mungon.');
 if (!check.includes(`"apiUrl":"${apiUrl.replace(/"/g, '\\"')}"`)) throw new Error('API URL nuk u injektua në HTML.');
 const markerIndex = check.indexOf(start);
-const finalBodyIndex = check.toLowerCase().lastIndexOf('</body>');
-if (markerIndex < 0 || markerIndex > finalBodyIndex) throw new Error('Cloud patch nuk u vendos para </body> të fundit.');
+const endMarkerIndex = check.indexOf(end);
+const finalHtmlIndex = check.toLowerCase().lastIndexOf('</html>');
+if (markerIndex < 0 || endMarkerIndex <= markerIndex) throw new Error('Kufijtë e Cloud patch janë të pavlefshëm.');
+if (finalHtmlIndex >= 0 && endMarkerIndex > finalHtmlIndex) throw new Error('Cloud patch u vendos pas fundit real të dokumentit.');
 console.log(`Cloud patched ${htmlPath}: API=${apiUrl || '(missing)'}; required=${required}; ${Buffer.byteLength(check)} bytes`);
