@@ -5,6 +5,8 @@ on:
     branches: [verify-phase3-production]
     paths:
       - '.github/workflows/verify-phase3-production.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -20,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: verify-phase3-production
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'verify-phase3-production' }}
           fetch-depth: 0
 
       - name: Wait for Railway and verify live Cloud configuration
