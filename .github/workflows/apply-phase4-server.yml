@@ -1,0 +1,62 @@
+name: Apply Phase 4 server integration
+
+on:
+  push:
+    branches: [phase4-full-traceability-operations]
+    paths:
+      - '.github/workflows/apply-phase4-server.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase4-full-traceability-operations
+          fetch-depth: 0
+      - name: Patch API server
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('apps/api/src/server.js')
+          s=p.read_text()
+          imp="import { installPhase4TraceabilityRoutes, migratePhase4Traceability } from './phase4-traceability.js';"
+          if imp not in s:
+              anchor="import { installPhase3CloudCoreRoutes, migratePhase3CloudCore } from './phase3-cloud-core.js';"
+              if anchor not in s: raise SystemExit('Phase 3 import anchor missing')
+              s=s.replace(anchor,anchor+'\n'+imp,1)
+          mig='    await migratePhase4Traceability(client);'
+          if mig not in s:
+              anchor='    await migratePhase3CloudCore(client);'
+              if anchor not in s: raise SystemExit('Phase 3 migration anchor missing')
+              s=s.replace(anchor,anchor+'\n'+mig,1)
+          route="installPhase4TraceabilityRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });"
+          if route not in s:
+              anchor="installPhase3CloudCoreRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });"
+              if anchor not in s: raise SystemExit('Phase 3 route anchor missing')
+              s=s.replace(anchor,anchor+'\n'+route,1)
+          s=s.replace("{ group: 'Gjurmueshmëri', phase: 3, active: false, items: ['Ferma & Origjina', 'Lote', 'Proces & Paketim', 'Kontroll Cilësie', 'Recall'] },","{ group: 'Gjurmueshmëri 360°', phase: 4, active: true, items: ['Ferma & Origjina', 'Parcela/Zona', 'Peshim & Pranim', 'Lote Automatike', 'Kontroll Cilësie', 'Proces & Paketim', 'Ngarkesa/Eksport', 'Recall'] },")
+          if "{ group: 'Operacione', phase: 4" not in s:
+              anchor="{ group: 'Arka & Banka', phase: 3, active: false, items: ['Mandat Arkëtimi', 'Mandat Pagese', 'Ditari i Arkës', 'Posta e Bankës', 'Rakordimi', 'Raportet'] },"
+              addition="\n    { group: 'Operacione', phase: 4, active: true, items: ['Shpenzime', 'Logjistikë', 'Ngarkesa & Eksport', 'Asete & Investime'] },"
+              if anchor not in s: raise SystemExit('Modules anchor missing')
+              s=s.replace(anchor,anchor+addition,1)
+          p.write_text(s)
+          PY
+          node --check apps/api/src/phase4-traceability.js
+          node --check apps/api/src/server.js
+          grep -q 'migratePhase4Traceability' apps/api/src/server.js
+          grep -q 'installPhase4TraceabilityRoutes' apps/api/src/server.js
+      - name: Commit integration and remove one-shot workflow
+        run: |
+          rm -f .github/workflows/apply-phase4-server.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/server.js .github/workflows/apply-phase4-server.yml
+          git commit -m 'Integrate Phase 4 traceability routes and migrations'
+          git push origin HEAD:phase4-full-traceability-operations
