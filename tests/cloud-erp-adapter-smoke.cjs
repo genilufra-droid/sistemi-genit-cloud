@@ -111,6 +111,10 @@ const api = http.createServer(async (req, res) => {
       state.bootstrapCalls += 1;
       return json(res, 200, bootstrapPayload());
     }
+    if (req.method === 'GET' && ['/api/trace/farms', '/api/trace/parcels', '/api/trace/lots', '/api/weights'].includes(url.pathname)) {
+      if (!authorized(req)) return json(res, 401, { error: 'AUTH_REQUIRED', message: 'Duhet të identifikoheni.' });
+      return json(res, 200, []);
+    }
     if (req.method === 'GET' && url.pathname === '/api/users') {
       if (!authorized(req)) return json(res, 401, { error: 'AUTH_REQUIRED', message: 'Duhet të identifikoheni.' });
       return json(res, 200, [user]);
