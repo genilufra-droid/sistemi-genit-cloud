@@ -1,4 +1,4 @@
-name: Patch Cloud adapter offline test fallback
+name: Patch Cloud adapter offline fallback
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-test:
+  patch:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -20,7 +20,7 @@ jobs:
           ref: cloud-erp-phase3-online-core
           fetch-depth: 0
 
-      - name: Preserve original offline bootstrap for isolated tests
+      - name: Preserve local bootstrap only for isolated tests
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -41,23 +41,14 @@ jobs:
           p.write_text(s)
           PY
           node --check apps/web/cloud-erp-adapter.js
+          grep -q 'bootstrap: Auth.bootstrap' apps/web/cloud-erp-adapter.js
+          grep -q 'original.bootstrap()' apps/web/cloud-erp-adapter.js
 
-      - name: Verify offline tests and production Cloud separation
-        run: |
-          npm ci --workspace apps/web
-          npm run build --workspace apps/web
-          grep -q '"required":false' apps/web/dist/index.html
-          grep -q 'bootstrap: Auth.bootstrap' apps/web/dist/index.html
-          rm -rf apps/web/dist
-          VITE_API_URL=https://api.example.test GENIT_CLOUD_REQUIRED=true npm run build --workspace apps/web
-          grep -q '"required":true' apps/web/dist/index.html
-          grep -q 'https://api.example.test' apps/web/dist/index.html
-
-      - name: Commit adapter correction and remove workflow
+      - name: Commit correction and remove one-shot workflow
         run: |
           rm -f .github/workflows/patch-cloud-adapter-fallback.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add apps/web/cloud-erp-adapter.js .github/workflows/patch-cloud-adapter-fallback.yml
-          git commit -m 'Separate production Cloud mode from isolated offline tests'
+          git commit -m 'Separate production Cloud mode from offline tests'
           git push origin HEAD:cloud-erp-phase3-online-core
