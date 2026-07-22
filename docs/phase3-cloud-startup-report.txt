@@ -1,0 +1,30 @@
+{
+  "diagnostic": {
+    "readyState": "complete",
+    "config": null,
+    "adapterFlag": true,
+    "hasCloudERP": true,
+    "cloudApiUrl": "",
+    "authBootstrap": "async function bootstrap() {\n    await DB.open();\n    try {\n      if(!API_URL) throw new Error('Mungon VITE_API_URL në konfigurimin e genit-web.');\n      var status=await request('/api/setup/status');\n      if(status.needsSetup){clearSession();renderSetup();return;}\n      var restored=await restore();\n      if(restored){await startApplication();return;}\n      renderLogin();\n    } catch(e) { if(REQUIRED) renderConnectionError(e); else return original.bootstrap(); }\n  }",
+    "authDisplay": "flex",
+    "authHtml": "<div id=\"auth-root\" class=\"auth-root\" style=\"display: flex;\"><div class=\"auth-card\"><div class=\"auth-brand\"><div class=\"auth-logo\">☁️</div><h1>Lidhja Cloud mungon</h1><p>ERP-ja nuk hapet me të dhëna lokale të pasigurta.</p></div><div class=\"auth-message error\">Mungon VITE_API_URL në konfigurimin e genit-web.</div><button class=\"btn btn-primary auth-submit\" onclick=\"CloudERP.retry()\">↻ Provo përsëri</button><div class=\"sg-cloud-endpoint\">Server: i pakonfiguruar</div></div></div>",
+    "shellDisplay": "none",
+    "hasCloudForm": false,
+    "hasLocalForm": false,
+    "adapterScript": true,
+    "adapterScriptText": "\n/* Sistemi Genit — Cloud ERP Adapter (PostgreSQL source of truth) */\n(function (global) {\n  'use strict';\n\n  var Auth = global.Auth;\n  var App = global.App;\n  var DB = global.DB;\n  if (!Auth || !App || !DB) throw new Error('Cloud ERP Adapter kërkon ",
+    "configText": null
+  },
+  "events": [
+    "pageerror: Invalid or unexpected token"
+  ]
+}
+
+--- WEB LOG ---
+npm warn config ignoring workspace config at /home/runner/work/sistemi-genit-cloud/sistemi-genit-cloud/apps/web/.npmrc
+
+> sistemi-genit-web@1.0.0 start
+> vite preview --host 0.0.0.0 --port ${PORT:-4173}
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m4173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.1.0.218:[1m4173[22m/[39m
