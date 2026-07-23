@@ -10,6 +10,22 @@ import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDoss
 import { installPhase62TraceabilityHotfixRoutes, migratePhase62TraceabilityHotfix } from './phase62-traceability-hotfix.js';
 import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
 
+function normalizeTraceabilityRowLock(sql) {
+  if (typeof sql !== 'string') return sql;
+  if (!/FROM\s+weight_tickets\s+wt/i.test(sql) || !/LEFT\s+JOIN/i.test(sql) || /FOR\s+UPDATE\s+OF\s+wt/i.test(sql)) return sql;
+  return sql.replace(/FOR\s+UPDATE\s*$/i, 'FOR UPDATE OF wt');
+}
+const originalPgQuery = pg.Client.prototype.query;
+if (!originalPgQuery.__sgTraceabilityLockFix) {
+  const patchedPgQuery = function patchedPgQuery(config, ...args) {
+    if (typeof config === 'string') config = normalizeTraceabilityRowLock(config);
+    else if (config && typeof config === 'object' && typeof config.text === 'string') config = { ...config, text: normalizeTraceabilityRowLock(config.text) };
+    return originalPgQuery.call(this, config, ...args);
+  };
+  patchedPgQuery.__sgTraceabilityLockFix = true;
+  pg.Client.prototype.query = patchedPgQuery;
+}
+
 const originalCreateServer = http.createServer;
 let capturedApp = null;
 let pendingListen = null;
