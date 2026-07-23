@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('fs');
+const path=require('path');
+const target=path.resolve(__dirname,'../tests/phase43-export-logistics.cjs');
+let source=fs.readFileSync(target,'utf8');
+const oldText="reports.byCustomer.some((row)=>row.name==='Herbal Import GmbH'&&Number(row.net_weight)===78)";
+const newText="reports.byCustomer.some((row)=>row.name==='Herbal Import GmbH'&&Number(row.net_weight)===79)";
+if(source.includes(oldText))source=source.replace(oldText,newText);
+else if(!source.includes(newText))throw new Error('Mungon pritshmëria e raportit sipas klientit.');
+fs.writeFileSync(target,source);
+const check=fs.readFileSync(target,'utf8');
+if(check.includes(oldText)||!check.includes(newText))throw new Error('Pritshmëria 79 kg nuk u aplikua.');
+console.log('Phase 4.3 report expectation aligned with main 78 kg + competing draft 1 kg.');
