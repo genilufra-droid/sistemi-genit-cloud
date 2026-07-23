@@ -1,0 +1,33 @@
+name: Package source ZIP temporary
+
+on:
+  push:
+    branches: [phase4-processing-packaging]
+    paths:
+      - '.github/workflows/package-source-zip-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase4-processing-packaging
+          fetch-depth: 0
+      - name: Build source archive
+        run: |
+          mkdir -p /tmp/package/Sistemi_Genit_Cloud_Source_Phase4_2
+          rsync -a --exclude='.git' --exclude='node_modules' --exclude='dist' --exclude='.github/workflows/package-source-zip-temp.yml' ./ /tmp/package/Sistemi_Genit_Cloud_Source_Phase4_2/
+          cd /tmp/package
+          zip -qr Sistemi_Genit_Cloud_Source_Phase4_2.zip Sistemi_Genit_Cloud_Source_Phase4_2
+          ls -lh Sistemi_Genit_Cloud_Source_Phase4_2.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sistemi_Genit_Cloud_Source_Phase4_2
+          path: /tmp/package/Sistemi_Genit_Cloud_Source_Phase4_2.zip
+          if-no-files-found: error
+          retention-days: 7
