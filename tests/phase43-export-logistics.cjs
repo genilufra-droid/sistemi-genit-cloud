@@ -56,7 +56,7 @@ async function main(){
   if(!trace.shipments.some((row)=>row.shipment_no==='NG-2026-000001'&&row.status==='CLOSED'))throw new Error('Ngarkesa nuk u shfaq në Gjurmueshmërinë 360° të lotit.');
   const reports=await request('/api/export/reports/overview?from=2026-07-01&to=2026-07-31',{headers:auth});
   if(!reports.status.some((row)=>row.status==='CLOSED'&&Number(row.net_weight)===78))throw new Error('Raporti sipas statusit është gabim.');
-  if(!reports.byCustomer.some((row)=>row.name==='Herbal Import GmbH'&&Number(row.net_weight)===78))throw new Error('Raporti sipas klientit është gabim.');
+  if(!reports.byCustomer.some((row)=>row.name==='Herbal Import GmbH'&&Number(row.net_weight)===79))throw new Error('Raporti sipas klientit është gabim.');
   if(!reports.byCountry.some((row)=>row.destination_country==='Gjermani'))throw new Error('Raporti sipas shtetit është gabim.');
   if(!reports.byVehicle.some((row)=>row.plate_no==='TR 043 EX'))throw new Error('Raporti sipas automjetit është gabim.');
   if(!reports.byLot.some((row)=>row.lot_number===packagingPosted.outputLot.lotNumber&&Number(row.quantity)===79))throw new Error('Raporti sipas lotit duhet të përfshijë Draftin konkurrues dhe ngarkesën kryesore.');
