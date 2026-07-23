@@ -120,6 +120,59 @@ function emitTenant() {}
 
 const router = capturedApp.router || capturedApp._router;
 if (!router?.stack || router.stack.length < 2) throw new Error('Express route stack nuk u gjet.');
+
+function normalizeOrigin(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function installPhase62CorsHotfix(app, expressRouter) {
+  const configuredOrigin = String(process.env.CORS_ORIGIN || '*').trim();
+  const configuredOrigins = configuredOrigin === '*'
+    ? null
+    : configuredOrigin.split(',').map(normalizeOrigin).filter(Boolean);
+  const allowedMethods = 'GET,POST,PUT,PATCH,DELETE,OPTIONS';
+  const allowedHeaders = [
+    'Content-Type',
+    'Authorization',
+    'X-SG-Device-ID',
+    'X-SG-Device-Name',
+    'X-SG-Device-Platform',
+    'X-SG-Device-Timezone',
+    'X-SG-Client-Time',
+    'X-SG-Device-Serial',
+  ].join(', ');
+
+  const corsHotfix = function phase62CorsHotfix(req, res, next) {
+    const requestOrigin = normalizeOrigin(req.headers.origin);
+    const allowOrigin = configuredOrigins == null
+      ? '*'
+      : (requestOrigin && configuredOrigins.includes(requestOrigin) ? requestOrigin : '');
+
+    if (allowOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+      if (allowOrigin !== '*') {
+        const currentVary = String(res.getHeader('Vary') || '');
+        const varyParts = currentVary.split(',').map((value) => value.trim()).filter(Boolean);
+        if (!varyParts.some((value) => value.toLowerCase() === 'origin')) varyParts.push('Origin');
+        res.setHeader('Vary', varyParts.join(', '));
+      }
+    }
+    res.setHeader('Access-Control-Allow-Methods', allowedMethods);
+    res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
+    res.setHeader('Access-Control-Max-Age', '86400');
+
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    return next();
+  };
+
+  const insertAt = expressRouter.stack.length;
+  app.use(corsHotfix);
+  const [layer] = expressRouter.stack.splice(insertAt, 1);
+  if (!layer) throw new Error('CORS hotfix middleware nuk u instalua.');
+  expressRouter.stack.unshift(layer);
+}
+
+installPhase62CorsHotfix(capturedApp, router);
 const terminalLayers = router.stack.splice(-2);
 await migratePhase5Finance(pool);
 await migratePhase6Operations(pool);
@@ -170,4 +223,4 @@ if (modulesLayer?.route?.stack?.length) {
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 6.2 traceability, 58mm label and immutable audit routes installed.');
+console.log('Sistemi Genit Cloud Phase 6.2 traceability, 58mm label, device CORS and immutable audit routes installed.');
