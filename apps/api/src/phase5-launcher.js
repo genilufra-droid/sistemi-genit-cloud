@@ -7,6 +7,7 @@ import { installPhase6AssetDisposalRoute } from './phase6-asset-disposal.js';
 import { installPhase6LogisticsReportHotfix } from './phase6-logistics-report-hotfix.js';
 import { installPhase6OperationsRoutes, migratePhase6Operations } from './phase6-operations.js';
 import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDossier } from './phase62-traceability-dossier.js';
+import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
 
 const originalCreateServer = http.createServer;
 let capturedApp = null;
@@ -92,6 +93,7 @@ const terminalLayers = router.stack.splice(-2);
 await migratePhase5Finance(pool);
 await migratePhase6Operations(pool);
 await migratePhase62TraceabilityDossier(pool);
+await migrateGlobalAuditTrail(pool);
 await pool.query(`
   CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
   RETURNS TRIGGER AS $$
@@ -111,6 +113,8 @@ await pool.query(`
   BEFORE INSERT OR UPDATE OF total_amount,paid_amount ON business_documents
   FOR EACH ROW EXECUTE FUNCTION sg_sync_business_document_payment_fields();
 `);
+
+installGlobalAuditTrail({ app:capturedApp, router, pool, authRequired, accessibleCompanyIds });
 installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase6AssetDisposalRoute({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
 installPhase6LogisticsReportHotfix({ app:capturedApp, pool, authRequired, accessibleCompanyIds });
@@ -122,7 +126,7 @@ const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/mo
 if (modulesLayer?.route?.stack?.length) {
   const target = modulesLayer.route.stack[modulesLayer.route.stack.length - 1];
   target.handle = (_req, res) => res.json([
-    { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log'] },
+    { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log','Gjurmë Përdoruesi & Pajisjeje'] },
     { group:'Blerje & Peshim',phase:2,active:true,items:['Formulari i Peshave','Kërkesa për Ofertë','Porosi Blerjeje','Pranime','Fatura Blerjeje'] },
     { group:'Shitje & Magazinë',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje','Stoku'] },
     { group:'Gjurmueshmëri 360°',phase:6.2,active:true,items:['Ferma & Origjina','Bimët','Formulari i Peshës','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë','Lote Automatike','Proces 1..N','Magazina Produkt i Gatshëm','Loti Final i Shitjes','Dosja e Dokumenteve'] },
@@ -133,4 +137,4 @@ if (modulesLayer?.route?.stack?.length) {
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 6.2 traceability dossier routes installed.');
+console.log('Sistemi Genit Cloud Phase 6.2 traceability and immutable audit routes installed.');
