@@ -1,0 +1,60 @@
+name: Test web runtime
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'scripts/patch-*.cjs'
+      - '.github/workflows/test-web-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci --workspaces=false
+      - name: Validate server syntax
+        run: node --check apps/web/serve.cjs
+      - name: Build web
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: npm run build
+      - name: Start production runtime
+        working-directory: apps/web
+        env:
+          HOST: 127.0.0.1
+          PORT: 4173
+        run: |
+          npm start > /tmp/genit-web.log 2>&1 &
+          echo $! > /tmp/genit-web.pid
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:4173/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/genit-web.log
+          exit 1
+      - name: Verify root and Phase 5 markers
+        run: |
+          curl --fail --silent http://127.0.0.1:4173/ > /tmp/index.html
+          grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/index.html
+          grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/index.html
+      - name: Stop runtime
+        if: always()
+        run: test -f /tmp/genit-web.pid && kill $(cat /tmp/genit-web.pid) || true
+      - name: Show runtime log on failure
+        if: failure()
+        run: cat /tmp/genit-web.log || true
