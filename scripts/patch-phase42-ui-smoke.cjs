@@ -10,6 +10,11 @@ function replaceOnce(oldText,newText,label){
 }
 
 replaceOnce(
+"await page.evaluate(()=>App.navigate('traceProcesses'));await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('Proces & Paketim Cloud'));let text=await page.locator('#content').innerText();",
+"await page.evaluate(()=>App.navigate('traceProcesses'));await page.waitForTimeout(1500);let text=await page.locator('#content').innerText();if(!text.includes('Proces & Paketim Cloud')){const diagnostic=await page.evaluate(()=>({view:App.currentView,content:document.getElementById('content')?.innerText.slice(0,1800),toast:document.body.innerText.slice(-900),phase42:Boolean(window.SGPhase42),loadPhase4:Boolean(CloudERP.loadPhase4)}));throw new Error('Moduli Phase 4.2 nuk u renderua: '+JSON.stringify(diagnostic)+' browserErrors='+JSON.stringify(errors));}",
+'initial module render');
+
+replaceOnce(
 "await page.evaluate(()=>App.saveProcessOrderOnline(''));await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('UP-2026-000001'));if(state.processCreates!==1)throw new Error('Drafti i procesit nuk arriti në API.');",
 "await page.evaluate(()=>App.saveProcessOrderOnline(''));if(state.processCreates!==1){const diagnostic=await page.evaluate(()=>({content:document.getElementById('content')?.innerText.slice(0,1600),modal:document.getElementById('modal-box')?.innerText.slice(0,1000)}));throw new Error('Drafti i procesit nuk arriti në API: '+JSON.stringify(diagnostic));}await page.evaluate(()=>App.view_traceProcesses());await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('UP-2026-000001'));",
 'process draft render');
@@ -36,5 +41,5 @@ replaceOnce(
 
 fs.writeFileSync(target,source);
 const check=fs.readFileSync(target,'utf8');
-if(!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
+if(!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
 console.log('Phase 4.2 browser smoke test patched deterministically.');
