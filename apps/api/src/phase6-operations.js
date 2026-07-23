@@ -5,7 +5,7 @@ const WRITE_ROLES=['SUPER_ADMIN','COMPANY_ADMIN','MANAGER','FINANCIER','MAGAZINI
 const OPS_ROLES=[...WRITE_ROLES,'SHITES'];
 const num=(v)=>Number(v||0);
 const text=(v)=>String(v??'').trim();
-const dateOnly=(v)=>String(v||new Date().toISOString()).slice(0,10);
+const dateOnly=(v)=>v instanceof Date?v.toISOString().slice(0,10):String(v||new Date().toISOString()).slice(0,10);
 function requestError(message,status=400){const e=new Error(message);e.status=status;return e;}
 async function addChange(client,user,companyId,entityType,entityId,operation,metadata={}){await client.query(`INSERT INTO cloud_change_events(tenant_id,company_id,entity_type,entity_id,operation,metadata,user_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)`,[user.tenant_id,companyId,entityType,entityId,operation,JSON.stringify(metadata),user.id]);}
 async function nextNumber(client,tenantId,companyId,key,prefix,date){const year=dateOnly(date).slice(0,4);const {rows}=await client.query(`INSERT INTO finance_sequences(tenant_id,company_id,sequence_key,last_value) VALUES($1,$2,$3,1) ON CONFLICT(tenant_id,company_id,sequence_key) DO UPDATE SET last_value=finance_sequences.last_value+1,updated_at=NOW() RETURNING last_value`,[tenantId,companyId,`${key}-${year}`]);return `${prefix}-${year}-${String(rows[0].last_value).padStart(6,'0')}`;}
@@ -78,8 +78,14 @@ export async function migratePhase6Operations(db){await db.query(`
     notes TEXT,version BIGINT NOT NULL DEFAULT 1,created_by UUID REFERENCES users(id) ON DELETE SET NULL,completed_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),UNIQUE(tenant_id,company_id,maintenance_no)
   );
-  ALTER TABLE expenses ADD CONSTRAINT expenses_trip_fk FOREIGN KEY(trip_id) REFERENCES logistics_trips(id) ON DELETE SET NULL NOT VALID;
-  ALTER TABLE expenses ADD CONSTRAINT expenses_maintenance_fk FOREIGN KEY(maintenance_id) REFERENCES logistics_maintenance(id) ON DELETE SET NULL NOT VALID;
+  DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='expenses_trip_fk') THEN
+      ALTER TABLE expenses ADD CONSTRAINT expenses_trip_fk FOREIGN KEY(trip_id) REFERENCES logistics_trips(id) ON DELETE SET NULL NOT VALID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='expenses_maintenance_fk') THEN
+      ALTER TABLE expenses ADD CONSTRAINT expenses_maintenance_fk FOREIGN KEY(maintenance_id) REFERENCES logistics_maintenance(id) ON DELETE SET NULL NOT VALID;
+    END IF;
+  END $$;
 
   ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS manufacturer VARCHAR(120);
   ALTER TABLE fixed_assets ADD COLUMN IF NOT EXISTS model VARCHAR(120);
