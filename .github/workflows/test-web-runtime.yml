@@ -28,6 +28,7 @@ jobs:
       - name: Validate server and Phase 6 syntax
         run: |
           node --check apps/web/serve.cjs
+          node --check apps/web/build-self-contained.cjs
           node --check apps/web/phase6-operations-ui.js
           node --check scripts/patch-phase6-operations-ui.cjs
       - name: Build web
@@ -36,6 +37,22 @@ jobs:
           VITE_API_URL: https://genit-api-production.up.railway.app
           GENIT_CLOUD_REQUIRED: 'true'
         run: npm run build
+      - name: Build from isolated Railway source root
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: |
+          rm -rf /tmp/genit-web-isolated
+          mkdir -p /tmp/genit-web-isolated
+          cp -a apps/web/. /tmp/genit-web-isolated/
+          rm -rf /tmp/genit-web-isolated/node_modules /tmp/genit-web-isolated/dist
+          cd /tmp/genit-web-isolated
+          npm ci --workspaces=false
+          npm run build
+          test -s dist/index.html
+          grep -q 'SG_PHASE5_FINANCE_UI_START' dist/index.html
+          grep -q 'SG_PHASE6_OPERATIONS_UI_START' dist/index.html
+          grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' dist/index.html
       - name: Start production runtime
         working-directory: apps/web
         env:
