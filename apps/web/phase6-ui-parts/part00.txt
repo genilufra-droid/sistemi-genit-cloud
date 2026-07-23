@@ -1,0 +1,78 @@
+/* Sistemi Genit Cloud — Faza 6 Operacione */
+(function(global){
+  'use strict';
+  var App=global.App,Cloud=global.CloudERP,Auth=global.Auth;
+  if(!App||!Cloud||!Cloud.apiUrl||Cloud.offlineTestMode||global.__SG_PHASE6_OPERATIONS_UI__)return;
+  global.__SG_PHASE6_OPERATIONS_UI__=true;
+  global.SGPhase6Operations={version:'6.1.0',cloud:true};
+
+  function esc(v){return App.esc?App.esc(v==null?'':String(v)):String(v||'').replace(/[&<>\"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function attr(v){return esc(v).replace(/'/g,'&#39;');}
+  function num(v){var n=Number(v);return Number.isFinite(n)?n:0;}
+  function val(id){var e=document.getElementById(id);return e?e.value:'';}
+  function checked(id){var e=document.getElementById(id);return Boolean(e&&e.checked);}
+  function today(){return new Date().toISOString().slice(0,10);}
+  function dateOnly(v){return v?String(v).slice(0,10):'';}
+  function fmt(v){return num(v).toLocaleString('sq-AL',{minimumFractionDigits:0,maximumFractionDigits:2});}
+  function money(v,c){return fmt(v)+' '+(c||'ALL');}
+  function camel(row){var out={};Object.keys(row||{}).forEach(function(k){out[k.replace(/_([a-z])/g,function(_,c){return c.toUpperCase();})]=row[k];});return out;}
+  function companyId(){return(App.company&&App.company.id)||((Cloud.getAccess&&Cloud.getAccess().companyIds||[])[0])||'';}
+  function byId(rows,id){return(rows||[]).find(function(x){return x.id===id;});}
+  function suppliers(){return(App.data.suppliers||[]).filter(function(x){return x.active!==false;});}
+  function warehouses(){return(App.data.warehouses||[]).filter(function(x){return x.active!==false;});}
+  function users(){return(App.data.users||[]).filter(function(x){return x.active!==false;});}
+  function options(rows,selected,label,textFn){return'<option value="">— '+esc(label)+' —</option>'+(rows||[]).map(function(x){var t=textFn?textFn(x):((x.code?x.code+' — ':'')+(x.name||x.fullName||x.assetName||x.documentNo||x.id));return'<option value="'+attr(x.id)+'"'+(x.id===selected?' selected':'')+'>'+esc(t)+'</option>';}).join('');}
+  function safeName(v){return String(v||'Dokument').replace(/[\\/:*?"<>|]+/g,'_').replace(/\s+/g,'_');}
+  function statusLabel(v){return{DRAFT:'Draft',APPROVED:'Aprovuar',POSTED:'Postuar',PAID:'Paguar',UNPAID:'Papaguar',STARTED:'Nisur',COMPLETED:'Përfunduar',ACTIVE:'Aktiv',DISPOSED:'Çregjistruar',IN_PROGRESS:'Në proces',CANCELLED:'Anulluar'}[v]||v||'—';}
+  function statusClass(v){return['POSTED','PAID','COMPLETED','ACTIVE'].includes(v)?'status-CONFIRMED':v==='CANCELLED'||v==='DISPOSED'?'status-CANCELLED':'status-DRAFT';}
+  function activate(view,title){App.currentView=view;document.querySelectorAll('.nav-item').forEach(function(x){x.classList.toggle('active',x.dataset.sg6View===view);});var h=document.querySelector('.topbar h2');if(h)h.textContent=title;}
+  function request(path,options){return Cloud.request(path,options);}
+  function toastError(e){App.toast(e&&e.message?e.message:String(e),'error');}
+  function requireManage(){if(Auth&&Auth.requirePermission)Auth.requirePermission('documents.create');}
+
+  async function loadOps(includeReports){
+    var calls=[
+      request('/api/operations/expense-categories'),
+      request('/api/operations/expenses'),
+      request('/api/operations/drivers'),
+      request('/api/operations/routes'),
+      request('/api/operations/trips'),
+      request('/api/operations/fuel'),
+      request('/api/operations/maintenance'),
+      request('/api/operations/assets'),
+      request('/api/finance/accounts'),
+      request('/api/logistics/vehicles')
+    ];
+    var r=await Promise.all(calls);
+    App.data.expenseCategories=r[0].map(camel);
+    App.data.expenses=r[1].map(camel);
+    App.data.opsDrivers=r[2].map(camel);
+    App.data.opsRoutes=r[3].map(camel);
+    App.data.opsTrips=r[4].map(camel);
+    App.data.opsFuel=r[5].map(camel);
+    App.data.opsMaintenance=r[6].map(camel);
+    App.data.opsAssets=r[7].map(camel);
+    App.data.financeAccounts=r[8].map(camel);
+    App.data.logisticsVehicles=r[9].map(camel);
+    if(includeReports){
+      var rr=await Promise.all([request('/api/operations/logistics/reports/catalog'),request('/api/operations/assets/reports/catalog')]);
+      App.data.opsLogisticsReportCatalog=rr[0];App.data.opsAssetReportCatalog=rr[1];
+    }
+    return r;
+  }
+  Cloud.loadPhase6Operations=loadOps;
+
+  function installMenu(){
+    if(document.getElementById('sg6-nav-section'))return;
+    var sidebar=document.querySelector('.sidebar');if(!sidebar)return;
+    var section=document.createElement('div');section.id='sg6-nav-section';section.className='nav-section';
+    section.innerHTML='<div class="nav-section-title">OPERACIONE &amp; ASETE</div>'+ 
+      '<div class="nav-item" data-sg6-view="opsDashboard" onclick="App.navigate(\'opsDashboard\')"><span class="icon">🧭</span><span>Paneli Operacional</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsExpenses" onclick="App.navigate(\'opsExpenses\')"><span class="icon">💸</span><span>Shpenzime</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsExpenseCategories" onclick="App.navigate(\'opsExpenseCategories\')"><span class="icon">🗂️</span><span>Kategori Shpenzimesh</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsDrivers" onclick="App.navigate(\'opsDrivers\')"><span class="icon">🧑‍✈️</span><span>Shoferë</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsRoutes" onclick="App.navigate(\'opsRoutes\')"><span class="icon">🗺️</span><span>Itinerare</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsTrips" onclick="App.navigate(\'opsTrips\')"><span class="icon">🚚</span><span>Udhëtime</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsFuel" onclick="App.navigate(\'opsFuel\')"><span class="icon">⛽</span><span>Karburant</span></div>'+ 
+      '<div class="nav-item" data-sg6-view="opsMaintenance" onclick="App.navigate(\'opsMaintenance\')"><span class="icon">🛠️</span><span>Mirëmbajtje</span></div>'+ 
+      '
