@@ -86,6 +86,25 @@ const router = capturedApp.router || capturedApp._router;
 if (!router?.stack || router.stack.length < 2) throw new Error('Express route stack nuk u gjet.');
 const terminalLayers = router.stack.splice(-2);
 await migratePhase5Finance(pool);
+await pool.query(`
+  CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
+  RETURNS TRIGGER AS $$
+  BEGIN
+    NEW.paid_amount := COALESCE(NEW.paid_amount,0);
+    NEW.remaining_amount := GREATEST(COALESCE(NEW.total_amount,0)-NEW.paid_amount,0);
+    NEW.payment_status := CASE
+      WHEN NEW.paid_amount<=0 THEN 'UNPAID'
+      WHEN NEW.remaining_amount<=0.0001 THEN 'PAID'
+      ELSE 'PARTIAL'
+    END;
+    RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+  DROP TRIGGER IF EXISTS trg_sg_sync_business_document_payment_fields ON business_documents;
+  CREATE TRIGGER trg_sg_sync_business_document_payment_fields
+  BEFORE INSERT OR UPDATE OF total_amount,paid_amount ON business_documents
+  FOR EACH ROW EXECUTE FUNCTION sg_sync_business_document_payment_fields();
+`);
 installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
