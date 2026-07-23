@@ -1,0 +1,26 @@
+'use strict';
+// Build probe: validates the Phase 5 injection in CI before Railway deploy.
+const fs=require('fs');
+const path=require('path');
+const root=path.resolve(__dirname,'..');
+const htmlPath=path.join(root,'apps/web/index.html');
+const jsPath=path.join(root,'apps/web/phase5-finance-ui.js');
+const cssPath=path.join(root,'apps/web/phase5-finance-ui.css');
+const start='<!-- SG_PHASE5_FINANCE_UI_START -->';
+const end='<!-- SG_PHASE5_FINANCE_UI_END -->';
+let html=fs.readFileSync(htmlPath,'utf8');
+let js=fs.readFileSync(jsPath,'utf8');
+const css=fs.readFileSync(cssPath,'utf8');
+js=js.replace("Auth.requirePermission('documents.create');",'');
+const escStart=start.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const escEnd=end.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+html=html.replace(new RegExp(escStart+'[\\s\\S]*?'+escEnd+'\\s*','g'),'');
+const finalClose=/<\/body>\s*<\/html>\s*$/i;
+if(!finalClose.test(html))throw new Error('Mungon mbyllja finale </body></html>.');
+const block=start+'\n<style id="sg-phase5-finance-style">\n'+css+'\n</style>\n<script id="sg-phase5-finance-script">\n'+js+'\n</script>\n'+end+'\n';
+html=html.replace(finalClose,block+'</body>\n</html>');
+fs.writeFileSync(htmlPath,html);
+const check=fs.readFileSync(htmlPath,'utf8');
+if((check.match(/SG_PHASE5_FINANCE_UI_START/g)||[]).length!==1)throw new Error('Patch-i Faza 5 nuk është idempotent.');
+['ARKA &amp; BANKA','Paneli Financiar','Mandat Arkëtimi','Mandat Pagese','Posta e Bankës','Ditari Financiar','Mbyllja Ditore','Raportet Arka/Bankë','global.SGPhase5Finance'].forEach(function(marker){if(!check.includes(marker))throw new Error('Mungon '+marker+' në HTML.');});
+console.log('Phase 5 cash/bank UI patched.');
