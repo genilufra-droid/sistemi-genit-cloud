@@ -1,0 +1,44 @@
+name: Package latest source for download
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Assemble source package
+        run: |
+          mkdir -p source-package/sistemi-genit-cloud
+          rsync -a ./ source-package/sistemi-genit-cloud/ \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude 'source-package' \
+            --exclude '*.zip'
+          {
+            echo 'Sistemi Genit Cloud — Source Code'
+            echo 'Base: main'
+            echo "Commit: $(git rev-parse HEAD)"
+            echo "Generated UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo 'Includes the latest merged ERP cloud phases available at packaging time.'
+          } > source-package/sistemi-genit-cloud/SOURCE_MANIFEST.txt
+      - name: Create source ZIP
+        working-directory: source-package
+        run: zip -qr ../Sistemi_Genit_Cloud_Latest_Source.zip sistemi-genit-cloud
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sistemi-Genit-Cloud-Latest-Source
+          path: Sistemi_Genit_Cloud_Latest_Source.zip
+          if-no-files-found: error
+          retention-days: 7
