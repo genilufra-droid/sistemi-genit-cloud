@@ -1,0 +1,35 @@
+name: Validate Phase 6 Railway web
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'scripts/patch-phase6-operations-ui.cjs'
+      - '.github/workflows/test-phase6-web-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  railway-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Phase 6 JavaScript and patch
+        run: |
+          node --check apps/web/phase6-operations-ui.js
+          node --check scripts/patch-phase6-operations-ui.cjs
+          node --check apps/web/build-scripts/patch-phase6-operations-ui.cjs
+      - name: Build Railway Docker image
+        run: docker build --no-cache -t sistemi-genit-phase6-web ./apps/web
+      - name: Run image and verify health
+        run: |
+          docker run -d --name genit-phase6-web -e PORT=4173 -p 4173:4173 sistemi-genit-phase6-web
+          for i in $(seq 1 40); do
+            curl --fail --silent http://127.0.0.1:4173/healthz >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/ | grep -q 'SG_PHASE6_OPERATIONS_UI_START'
+          docker logs genit-phase6-web
