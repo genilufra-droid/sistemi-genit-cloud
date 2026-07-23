@@ -1,0 +1,40 @@
+name: Diagnose web build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install
+        working-directory: apps/web
+        run: npm ci --workspaces=false
+      - name: Syntax checks
+        run: |
+          node --check apps/web/phase5-finance-ui.js
+          node --check scripts/patch-phase5-finance-ui.cjs
+          node --check apps/web/phase4-export-extensions-ui.js
+          node --check scripts/patch-phase4-export-extensions-ui.cjs
+      - name: Build exactly like Railway
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: "true"
+        run: npm run build
+      - name: Validate output
+        run: |
+          test -s apps/web/dist/index.html
+          grep -q 'SG_PHASE5_FINANCE_UI_START' apps/web/dist/index.html
+          grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' apps/web/dist/index.html
