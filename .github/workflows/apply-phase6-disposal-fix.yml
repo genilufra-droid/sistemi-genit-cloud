@@ -1,0 +1,36 @@
+name: Apply Phase 6 disposal fix
+
+on:
+  push:
+    branches: [phase6-expenses-logistics-assets]
+    paths:
+      - 'scripts/patch-phase6-disposal-diagnostics.py'
+      - '.github/workflows/apply-phase6-disposal-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase6-expenses-logistics-assets
+          fetch-depth: 0
+      - name: Apply and validate disposal fix
+        run: |
+          python3 scripts/patch-phase6-disposal-diagnostics.py
+          node --check apps/api/src/phase6-operations.js
+      - name: Commit verified source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/phase6-operations.js .github/workflows/test-phase6-operations.yml
+          if git diff --cached --quiet; then
+            echo 'No source change required.'
+          else
+            git commit -m 'Fix asset disposal transaction and preserve diagnostics'
+            git push origin HEAD:phase6-expenses-logistics-assets
+          fi
