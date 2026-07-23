@@ -19,6 +19,7 @@ if(req.method==='GET'&&url.pathname==='/api/setup/status')return json(res,200,{n
 if(req.method==='GET'&&url.pathname==='/api/auth/me')return auth(req)?json(res,200,{user,companyIds:[ids.company],warehouseIds:[ids.warehouse]}):json(res,401,{message:'Pa autorizim'});
 if(!auth(req))return json(res,401,{message:'Pa autorizim'});
 if(req.method==='GET'&&url.pathname==='/api/cloud/bootstrap'){state.bootstrapCalls++;return json(res,200,bootstrap());}
+if(req.method==='GET'&&url.pathname==='/api/master-data/capabilities')return json(res,200,[{entityType:'FARMER',canCreate:true},{entityType:'DRIVER',canCreate:true},{entityType:'ROUTE',canCreate:true},{entityType:'AGENT',canCreate:true},{entityType:'ASSET',canCreate:true},{entityType:'EXPENSE_CATEGORY',canCreate:true},{entityType:'CASH_ACCOUNT',canCreate:true,native:true},{entityType:'BANK_ACCOUNT',canCreate:true,native:true}]);
 if(req.method==='GET'&&url.pathname==='/api/trace/farms')return json(res,200,[]);
 if(req.method==='GET'&&url.pathname==='/api/trace/parcels')return json(res,200,[]);
 if(req.method==='GET'&&url.pathname==='/api/weights')return json(res,200,[]);
