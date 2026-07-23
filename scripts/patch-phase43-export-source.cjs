@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('fs');
+const path=require('path');
+const target=path.resolve(__dirname,'../apps/api/src/phase4-export-logistics.js');
+let source=fs.readFileSync(target,'utf8');
+const oldText="$30,$31,$32,$33,$34,$35,$36) RETURNING *`";
+const newText="$30,$31,$32,$33,$34,$35) RETURNING *`";
+if(source.includes(oldText))source=source.replace(oldText,newText);
+else if(!source.includes(newText))throw new Error('Mungon INSERT-i i Ngarkesës për korrigjim.');
+fs.writeFileSync(target,source);
+const check=fs.readFileSync(target,'utf8');
+if(check.includes(oldText)||!check.includes(newText))throw new Error('Numri i placeholder-ëve nuk u korrigjua.');
+console.log('Shipment INSERT placeholder count fixed to 35 parameters.');
