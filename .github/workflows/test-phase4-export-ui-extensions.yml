@@ -2,7 +2,7 @@ name: Test Phase 4 export UI extensions
 
 on:
   push:
-    branches: [phase4-export-shipments]
+    branches: [phase4-export-shipments-final]
     paths:
       - 'apps/web/**'
       - 'scripts/patch-phase4-export-extensions-ui.cjs'
@@ -39,13 +39,13 @@ jobs:
             'openExportTimeline',
             'openExportDocuments',
             '15 raporte operative',
+            '/api/export/reports/catalog',
             'shipment-register',
-            'profitability',
             'exportCurrentExportReportPDF',
             'exportCurrentExportReportExcel'
           ];
           for(const marker of required){if(!html.includes(marker))throw new Error(`Mungon marker-i ${marker}`);}
           if(count('SG_PHASE43_EXPORT_EXTENSIONS_UI_START')!==1)throw new Error('Extension UI është injektuar më shumë se një herë.');
           if(count('SG_PHASE43_EXPORT_LOGISTICS_UI_START')!==1)throw new Error('UI bazë e eksportit nuk është unike.');
-          console.log(JSON.stringify({result:'TEST_SUCCESS',extensionMarkers:required.length,reportCatalog:15,uniqueInjection:true},null,2));
+          console.log(JSON.stringify({result:'TEST_SUCCESS',extensionMarkers:required.length,dynamicReportCatalog:true,uniqueInjection:true},null,2));
           NODE
