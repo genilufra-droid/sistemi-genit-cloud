@@ -1,10 +1,11 @@
-name: Apply Phase 4.3 export regression update
+name: Apply Phase 4.3 export regression updates
 
 on:
   push:
     branches: [phase4-export-shipments-final]
     paths:
       - 'scripts/patch-phase43-export-regression.py'
+      - 'scripts/patch-phase43-export-ui-regression.py'
       - '.github/workflows/apply-phase43-export-regression.yml'
   workflow_dispatch:
 
@@ -19,16 +20,20 @@ jobs:
         with:
           ref: phase4-export-shipments-final
           fetch-depth: 0
-      - name: Apply focused test update
-        run: python3 scripts/patch-phase43-export-regression.py
-      - name: Commit verified update
+      - name: Apply focused regression updates
+        run: |
+          python3 scripts/patch-phase43-export-regression.py
+          python3 scripts/patch-phase43-export-ui-regression.py
+          node --check tests/phase43-export-logistics.cjs
+          node --check tests/phase43-export-ui-smoke.cjs
+      - name: Commit verified updates
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/phase43-export-logistics.cjs
+          git add tests/phase43-export-logistics.cjs tests/phase43-export-ui-smoke.cjs
           if git diff --cached --quiet; then
-            echo 'No regression update required.'
+            echo 'No regression updates required.'
           else
-            git commit -m 'Update export regression for mandatory shipping documents'
+            git commit -m 'Update export regressions for mandatory documents and report catalog'
             git push origin HEAD:phase4-export-shipments-final
           fi
