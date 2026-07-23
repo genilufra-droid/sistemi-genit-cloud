@@ -6,6 +6,39 @@ import { installPhase5FinanceRoutes, migratePhase5Finance } from './phase5-finan
 import { installPhase6AssetDisposalRoute } from './phase6-asset-disposal.js';
 import { installPhase6LogisticsReportHotfix } from './phase6-logistics-report-hotfix.js';
 import { installPhase6OperationsRoutes, migratePhase6Operations } from './phase6-operations.js';
+import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDossier } from './phase62-traceability-dossier.js';
+import { installPhase62TraceabilityHotfixRoutes, migratePhase62TraceabilityHotfix } from './phase62-traceability-hotfix.js';
+import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
+
+pg.types.setTypeParser(1082, (value) => value);
+
+function normalizeTraceabilitySql(sql) {
+  if (typeof sql !== 'string') return sql;
+  let normalized = sql;
+  if (/INSERT\s+INTO\s+cloud_change_events/i.test(normalized) && /'UPSERT'/i.test(normalized)) {
+    normalized = normalized.replace(/'UPSERT'/gi, "'UPDATE'");
+  }
+  if (/INSERT\s+INTO\s+trace_lots/i.test(normalized) && /trace_dossier_id\s*,\s*display_label\s*,\s*packaging_count\s*,\s*packaging_unit/i.test(normalized) && /,\$26\)\s*$/i.test(normalized)) {
+    normalized = normalized.replace(/,\$26\)\s*$/i, ')');
+  }
+  if (/FROM\s+trace_lots\s+l/i.test(normalized) && /bp\.name\s+AS\s+supplier_name\s*,\s*bp\.nipt\s+AS\s+supplier_nipt/i.test(normalized) && !/bp\.code\s+AS\s+supplier_code/i.test(normalized)) {
+    normalized = normalized.replace(/bp\.name\s+AS\s+supplier_name\s*,\s*bp\.nipt\s+AS\s+supplier_nipt/i, 'bp.code AS supplier_code,bp.name AS supplier_name,bp.nipt AS supplier_nipt');
+  }
+  if (/FROM\s+weight_tickets\s+wt/i.test(normalized) && /LEFT\s+JOIN/i.test(normalized) && !/FOR\s+UPDATE\s+OF\s+wt/i.test(normalized)) {
+    normalized = normalized.replace(/FOR\s+UPDATE\s*$/i, 'FOR UPDATE OF wt');
+  }
+  return normalized;
+}
+const originalPgQuery = pg.Client.prototype.query;
+if (!originalPgQuery.__sgTraceabilitySqlFix) {
+  const patchedPgQuery = function patchedPgQuery(config, ...args) {
+    if (typeof config === 'string') config = normalizeTraceabilitySql(config);
+    else if (config && typeof config === 'object' && typeof config.text === 'string') config = { ...config, text: normalizeTraceabilitySql(config.text) };
+    return originalPgQuery.call(this, config, ...args);
+  };
+  patchedPgQuery.__sgTraceabilitySqlFix = true;
+  pg.Client.prototype.query = patchedPgQuery;
+}
 
 const originalCreateServer = http.createServer;
 let capturedApp = null;
@@ -90,6 +123,9 @@ if (!router?.stack || router.stack.length < 2) throw new Error('Express route st
 const terminalLayers = router.stack.splice(-2);
 await migratePhase5Finance(pool);
 await migratePhase6Operations(pool);
+await migratePhase62TraceabilityDossier(pool);
+await migrateGlobalAuditTrail(pool);
+await migratePhase62TraceabilityHotfix(pool);
 await pool.query(`
   CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
   RETURNS TRIGGER AS $$
@@ -109,20 +145,24 @@ await pool.query(`
   BEFORE INSERT OR UPDATE OF total_amount,paid_amount ON business_documents
   FOR EACH ROW EXECUTE FUNCTION sg_sync_business_document_payment_fields();
 `);
+
+installGlobalAuditTrail({ app:capturedApp, router, pool, authRequired, accessibleCompanyIds });
 installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase6AssetDisposalRoute({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
 installPhase6LogisticsReportHotfix({ app:capturedApp, pool, authRequired, accessibleCompanyIds });
 installPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase62TraceabilityHotfixRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase62TraceabilityDossierRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
 if (modulesLayer?.route?.stack?.length) {
   const target = modulesLayer.route.stack[modulesLayer.route.stack.length - 1];
   target.handle = (_req, res) => res.json([
-    { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log'] },
+    { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log','Gjurmë Përdoruesi & Pajisjeje'] },
     { group:'Blerje & Peshim',phase:2,active:true,items:['Formulari i Peshave','Kërkesa për Ofertë','Porosi Blerjeje','Pranime','Fatura Blerjeje'] },
     { group:'Shitje & Magazinë',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje','Stoku'] },
-    { group:'Gjurmueshmëri 360°',phase:4,active:true,items:['Ferma & Origjina','Parcela/Zona','Peshim & Pranim','Lote Automatike','Kontroll Cilësie','Proces & Paketim','Ngarkesa/Eksport','Recall'] },
+    { group:'Gjurmueshmëri 360°',phase:6.2,active:true,items:['Ferma & Origjina','Bimët','Formulari i Peshës','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë 58 mm','Lote Automatike','Proces 1..N','Magazina Produkt i Gatshëm','Loti Final i Shitjes','Dosja e Dokumenteve'] },
     { group:'Arka & Banka',phase:5,active:true,items:['Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },
     { group:'Operacione',phase:6,active:true,items:['Shpenzime','Kategori Shpenzimesh','Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },
   ]);
@@ -130,4 +170,4 @@ if (modulesLayer?.route?.stack?.length) {
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 6 Operations routes installed over Phase 5 Finance.');
+console.log('Sistemi Genit Cloud Phase 6.2 traceability, 58mm label and immutable audit routes installed.');

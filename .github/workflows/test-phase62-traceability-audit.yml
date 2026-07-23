@@ -1,0 +1,121 @@
+name: Test Phase 6.2 traceability dossier and audit
+
+on:
+  push:
+    branches: [phase62-traceability-dossier]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'scripts/test-phase62-scenario.mjs'
+      - '.github/workflows/test-phase62-traceability-audit.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  phase62:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_phase62_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_phase62_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_phase62_test
+      JWT_SECRET: phase62-audit-test-secret-minimum-32-characters
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+      VITE_API_URL: http://127.0.0.1:3000
+      GENIT_CLOUD_REQUIRED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Check API and scenario syntax
+        run: |
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+          cd ../..
+          node --check scripts/test-phase62-scenario.mjs
+
+      - name: Start API
+        run: |
+          cd apps/api
+          npm start > /tmp/phase62-api.log 2>&1 &
+          echo $! > /tmp/phase62-api.pid
+          for attempt in $(seq 1 90); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase62-api.log
+          exit 1
+
+      - name: Run dossier, line-level weight, 58mm label and audit scenario
+        id: scenario
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/test-phase62-scenario.mjs 2>&1 | tee /tmp/phase62-scenario.log
+
+      - name: Upload Phase 6.2 debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase62-debug-${{ github.run_id }}
+          path: |
+            /tmp/phase62-api.log
+            /tmp/phase62-scenario.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail when scenario failed
+        if: ${{ steps.scenario.outcome == 'failure' }}
+        run: |
+          cat /tmp/phase62-scenario.log || true
+          exit 1
+
+      - name: Verify audit history is immutable
+        run: |
+          set +e
+          OUTPUT=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "UPDATE system_action_events SET action='TAMPERED' WHERE sequence_no=(SELECT MIN(sequence_no) FROM system_action_events);" 2>&1)
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          if [ "$STATUS" -eq 0 ]; then
+            echo 'Audit history update was not blocked.'
+            exit 1
+          fi
+          echo "$OUTPUT" | grep -q 'System action events are immutable'
+
+      - name: Build web with workflow, weight preview, 58mm label and device audit markers
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          npm run build
+          grep -q 'SG_PHASE62_TRACEABILITY_WORKFLOW_UI_START' dist/index.html
+          grep -q 'Dosja e Gjurmueshmërisë' dist/index.html
+          grep -q 'Nr. Ambalazheve' dist/index.html
+          grep -q 'SG_PHASE62_WEIGHT_DOCUMENT_UI_START' dist/index.html
+          grep -q 'Pamje · Formulari i Peshës' dist/index.html
+          grep -q 'SG_PHASE62_LOT_LABEL_58MM_UI_START' dist/index.html
+          grep -q 'PESHË NETO' dist/index.html
+          grep -q 'format:\[58,72\]' dist/index.html
+          grep -q 'SG_PHASE62_AUDIT_DEVICE_UI_START' dist/index.html
+          grep -q 'X-SG-Device-ID' dist/index.html
+          grep -q '/api/audit/client-event' dist/index.html
+
+      - name: Show API log on failure
+        if: failure()
+        run: cat /tmp/phase62-api.log || true
