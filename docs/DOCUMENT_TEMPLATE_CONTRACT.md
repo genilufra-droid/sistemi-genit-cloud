@@ -113,9 +113,31 @@ Fletë-Hyrja krijohet pas Kontrollit të Cilësisë dhe Faturës së Blerjes. N�
 - Fletë-Hyrja;
 - lëvizja e stokut;
 - loti RAW;
-- etiketa e printueshme.
+- etiketa termike e printueshme.
 
-Formati i etiketës:
+**Etiketa e lotit është dokument termik 58 mm dhe nuk lejohet të konvertohet në model A4.** Pamja me shenjën e syrit, Print Preview, Print dhe PDF përdorin të njëjtin template 58 mm.
+
+Etiketa ka detyrimisht këtë rend dhe këto fusha:
+
+1. kompania;
+2. titulli **ETIKETË LOTI**;
+3. **Kodi i Furnitorit/Fermerit** dhe **Artikulli/Bima**;
+4. dy blloqe të mëdha të ndara:
+   - **AMB** — numri dhe njësia e ambalazheve;
+   - **PESHË NETO** — sasia neto në kg;
+5. numri i lotit;
+6. data;
+7. përshkrimi i lexueshëm i etiketës.
+
+Shembull i blloqeve kryesore:
+
+```text
+264   FERRË
+AMB: 36 THASË
+PESHË NETO: 450 KG
+```
+
+Formati i përshkrimit të etiketës:
 
 `Kodi i Furnitorit – Artikulli/Bima – Nr. Ambalazheve – Pesha Neto`
 
@@ -169,7 +191,7 @@ Dosja është një kartelë me timeline dhe lidhje aktive për çdo dokument:
 4. Kontrolli i Cilësisë;
 5. Fatura e Blerjes;
 6. Fletë-Hyrja;
-7. Etiketa dhe Loti RAW;
+7. Etiketa 58 mm dhe Loti RAW;
 8. Procesi 1..N;
 9. Magazina Produkt i Gatshëm;
 10. Porosia e Klientit dhe loti final;
@@ -200,7 +222,7 @@ Dosja duhet të ketë:
 - Ditari i Arkës.
 - Urdhri i Punës / Procesi.
 - Dokumenti i Paketimit.
-- Etiketa e Lotit.
+- Etiketa e Lotit 58 mm.
 - Packing List.
 - Ngarkesa / Manifesti i Kamionit.
 - CMR dhe dokumentet shoqëruese të eksportit.
@@ -212,7 +234,7 @@ Dosja duhet të ketë:
 2. Ndryshimi i kartelës master pas postimit nuk ndryshon dokumentin historik.
 3. Print Preview përdor të njëjtin template renderer si PDF.
 4. Excel-i është `.xlsx` real, jo CSV, dhe përmban header-in, të dhënat, rreshtat, totalet, formatimin, kufijtë, gjerësitë, print area dhe orientimin.
-5. Faturat, Fletë-Hyrjet, Fletë-Daljet, mandatet, ditarët dhe dokumentet e eksportit përdorin A4, përveç faturës termike 58 mm.
+5. Faturat, Fletë-Hyrjet, Fletë-Daljet, mandatet, ditarët dhe dokumentet e eksportit përdorin A4, përveç faturës termike 58 mm dhe etiketës së lotit 58 mm.
 6. Çdo listë dokumentesh ka kolonën Veprime me: Shiko, Edito Draft, Posto/Konfirmo, Anullo, Print, PDF dhe Excel.
 7. Dokumenti i postuar nuk fshihet. Anulimi krijon kundërveprim dhe Audit Log.
 8. PDF/Print/Excel përmbajnë saktësisht të dhënat e filtruara dhe snapshot-in e dokumentit.
