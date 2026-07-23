@@ -141,6 +141,22 @@ jobs:
           path: /tmp/phase42-report/test.log
           if-no-files-found: error
           retention-days: 7
+      - name: Package current source ZIP
+        if: always()
+        run: |
+          mkdir -p /tmp/package/Sistemi_Genit_Cloud_Source_Phase4_2
+          rsync -a --exclude='.git' --exclude='node_modules' --exclude='dist' --exclude='.github/workflows/package-source-zip-temp.yml' ./ /tmp/package/Sistemi_Genit_Cloud_Source_Phase4_2/
+          cd /tmp/package
+          zip -qr Sistemi_Genit_Cloud_Source_Phase4_2.zip Sistemi_Genit_Cloud_Source_Phase4_2
+          ls -lh Sistemi_Genit_Cloud_Source_Phase4_2.zip
+      - name: Upload source ZIP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sistemi_Genit_Cloud_Source_Phase4_2
+          path: /tmp/package/Sistemi_Genit_Cloud_Source_Phase4_2.zip
+          if-no-files-found: error
+          retention-days: 7
       - name: Enforce Phase 4.2 result
         if: steps.phase42_test.outcome != 'success'
         run: exit 1
