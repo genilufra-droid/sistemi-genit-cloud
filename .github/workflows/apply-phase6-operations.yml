@@ -1,0 +1,39 @@
+name: Apply Phase 6 operations integration
+
+on:
+  push:
+    branches: [phase6-expenses-logistics-assets]
+    paths:
+      - 'apps/api/src/phase6-operations.js'
+      - 'scripts/patch-phase6-operations-integration.py'
+      - '.github/workflows/apply-phase6-operations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase6-expenses-logistics-assets
+          fetch-depth: 0
+      - name: Apply idempotent integration
+        run: |
+          python3 scripts/patch-phase6-operations-integration.py
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+      - name: Commit verified integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/phase6-operations.js apps/api/src/phase5-launcher.js apps/api/package.json
+          if git diff --cached --quiet; then
+            echo 'No integration changes required.'
+          else
+            git commit -m 'Integrate Phase 6 expenses logistics and assets'
+            git push origin HEAD:phase6-expenses-logistics-assets
+          fi
