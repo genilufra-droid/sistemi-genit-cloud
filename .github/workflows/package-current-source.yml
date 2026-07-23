@@ -5,6 +5,8 @@ on:
     branches: [phase4-processing-packaging]
     paths:
       - '.github/workflows/package-current-source.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: phase4-processing-packaging
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'phase4-processing-packaging' }}
           fetch-depth: 1
       - name: Add source manifest
         run: |
