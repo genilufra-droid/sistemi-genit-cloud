@@ -16,6 +16,7 @@ import { installPhase3CloudCoreRoutes, migratePhase3CloudCore } from './phase3-c
 import { installPhase4TraceabilityRoutes, migratePhase4Traceability } from './phase4-traceability.js';
 import { installPhase4ProcessingPackagingRoutes, migratePhase4ProcessingPackaging } from './phase4-processing-packaging.js';
 import { installPhase4ExportLogisticsRoutes, migratePhase4ExportLogistics } from './phase4-export-logistics.js';
+import { installGlobalMasterDataRoutes, migrateGlobalMasterData } from './global-master-data.js';
 
 const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
@@ -139,6 +140,7 @@ async function migrate() {
     await migratePhase4Traceability(client);
     await migratePhase4ProcessingPackaging(client);
     await migratePhase4ExportLogistics(client);
+    await migrateGlobalMasterData(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -623,6 +625,7 @@ installPhase3CloudCoreRoutes({ app, pool, authRequired, requireRoles, assertComp
 installPhase4TraceabilityRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase4ProcessingPackagingRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase4ExportLogisticsRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installGlobalMasterDataRoutes({ app, pool, authRequired, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 
 app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: `Rruga ${req.method} ${req.path} nuk ekziston.` }));
 app.use((error, _req, res, _next) => {
