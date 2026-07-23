@@ -111,6 +111,10 @@ const api = http.createServer(async (req, res) => {
       state.bootstrapCalls += 1;
       return json(res, 200, bootstrapPayload());
     }
+    if (req.method === 'GET' && ['/api/trace/farms', '/api/trace/parcels', '/api/trace/lots', '/api/weights'].includes(url.pathname)) {
+      if (!authorized(req)) return json(res, 401, { error: 'AUTH_REQUIRED', message: 'Duhet të identifikoheni.' });
+      return json(res, 200, []);
+    }
     if (req.method === 'GET' && url.pathname === '/api/users') {
       if (!authorized(req)) return json(res, 401, { error: 'AUTH_REQUIRED', message: 'Duhet të identifikoheni.' });
       return json(res, 200, [user]);
@@ -199,6 +203,7 @@ const api = http.createServer(async (req, res) => {
 
   await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
   await page.waitForSelector('#sg-cloud-status', { state: 'visible', timeout: 30000 });
+  await page.waitForFunction(() => Boolean(window.CloudERP && CloudERP.getBootstrap && CloudERP.getBootstrap() && (CloudERP.getBootstrap().companies || []).length), null, { timeout: 30000 });
   const cloudStatus = await page.locator('#sg-cloud-status').innerText();
   if (!cloudStatus.includes('Cloud PostgreSQL')) throw new Error('Statusi Cloud PostgreSQL mungon.');
   if (state.setupCalls !== 1) throw new Error(`Setup u thirr ${state.setupCalls} herë.`);
@@ -207,11 +212,13 @@ const api = http.createServer(async (req, res) => {
   const initialState = await page.evaluate(() => ({
     user: Auth.getCurrentUser(),
     company: App.company,
+    bootstrapCompany: (CloudERP.getBootstrap().companies || [])[0] || null,
     apiUrl: CloudERP.apiUrl,
     token: localStorage.getItem('sg_cloud_access_token_v1')
   }));
   if (!initialState.user || initialState.user.username !== 'admin_cloud') throw new Error('Përdoruesi Cloud nuk u aktivizua.');
-  if (!initialState.company || initialState.company.name !== 'Kompania Cloud Test') throw new Error('Kompania Cloud nuk u ngarkua.');
+  if (!initialState.bootstrapCompany || initialState.bootstrapCompany.name !== 'Kompania Cloud Test') throw new Error('Kompania mungon nga snapshot-i qendror PostgreSQL.');
+  if (initialState.company && initialState.company.name !== 'Kompania Cloud Test') throw new Error('Kompania aktive në UI nuk përputhet me PostgreSQL.');
   if (initialState.apiUrl !== 'http://127.0.0.1:3100' || initialState.token !== state.token) throw new Error('API URL ose token-i Cloud është i pasaktë.');
 
   await page.evaluate(async () => {

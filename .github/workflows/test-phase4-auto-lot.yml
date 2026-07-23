@@ -1,0 +1,147 @@
+name: Test Phase 4 automatic lot
+
+on:
+  push:
+    branches: [phase4-full-traceability-operations]
+    paths:
+      - 'apps/api/**'
+      - 'scripts/patch-phase4-weight-draft-api.py'
+      - '.github/workflows/test-phase4-auto-lot.yml'
+      - '.github/workflows/add-phase4-weight-draft-api.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  auto-lot:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_phase4_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_phase4_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_phase4_test
+      JWT_SECRET: phase4-auto-lot-test-secret-minimum-32-characters-2026
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Apply pending online weight draft routes
+        run: |
+          python3 scripts/patch-phase4-weight-draft-api.py
+          grep -q "app.post('/api/trace/weights'" apps/api/src/phase4-traceability.js
+          grep -q "app.patch('/api/trace/weights/:id'" apps/api/src/phase4-traceability.js
+      - name: Validate source
+        run: |
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+          node --check src/phase4-traceability.js
+      - name: Start API
+        run: |
+          cd apps/api
+          node src/server.js > /tmp/phase4-api.log 2>&1 &
+          echo $! > /tmp/phase4-api.pid
+          for attempt in $(seq 1 45); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase4-api.log
+          exit 1
+      - name: Verify draft, automatic lot and traceability transaction
+        id: phase4_test
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/phase4-report
+          set +e
+          node <<'NODE' > /tmp/phase4-report/test.log 2>&1
+          const base='http://127.0.0.1:3000';
+          async function request(path, options={}) {
+            const response=await fetch(base+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+            const text=await response.text(); let body; try{body=JSON.parse(text)}catch{body={text}};
+            if(!response.ok){const e=new Error(`${response.status} ${path}: ${body.message||text}`);e.status=response.status;e.body=body;throw e;}
+            return body;
+          }
+          const setup=await request('/api/setup/admin',{method:'POST',body:JSON.stringify({organizationName:'Genit Phase 4',companyName:'Kompania Test',companyNipt:'L12345678A',warehouseName:'Magazina Qendrore',adminName:'Administrator Test',username:'admin_phase4',email:'admin-phase4@example.com',password:'AdminPhase4123'})});
+          const token=setup.token; const auth={Authorization:`Bearer ${token}`};
+          const boot=await request('/api/cloud/bootstrap',{headers:auth});
+          const company=boot.companies[0]; const warehouse=boot.warehouses[0];
+          const product=await request('/api/products',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'GJF',name:'Gjethe Ferre',baseUnit:'kg',packUnit:'thes',palletUnit:'palete',packCoefficient:1,palletCoefficient:1,purchasePrice:100,salePrice:180,vatRate:0,active:true})});
+          const supplier=await request('/api/partners',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,partnerType:'SUPPLIER',code:'FER-001',name:'Fermeri Test',nipt:'K00000000T',address:'Skrapar',city:'Skrapar',phone:'',email:'',creditLimit:0,active:true})});
+          const farm=await request('/api/trace/farms',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,supplierId:supplier.id,code:'FERMA-001',name:'Ferma Mali i Tomorrit',sourceTypeDefault:'WILD_COLLECTION',country:'Shqiperi',region:'Berat',municipality:'Skrapar',village:'Gjerbes',locationName:'Mali i Tomorrit',latitude:40.52,longitude:20.22,notes:'Origjine test',active:true})});
+          const parcel=await request('/api/trace/parcels',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,farmId:farm.id,code:'ZONA-04',name:'Zona e Mbledhjes 04',sourceType:'WILD_COLLECTION',country:'Shqiperi',region:'Berat',municipality:'Skrapar',village:'Gjerbes',locationName:'Shpatet e Tomorrit',latitude:40.52,longitude:20.22,areaHectares:2.5,notes:'Zone test',active:true})});
+          const draftPayload={companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:product.id,documentDate:'2026-07-22',bagsCount:20,grossWeight:205,packagingWeight:5,discountPercent:0,unitPrice:100,vehiclePlate:'AA001AA',farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE',notes:'Pranim 200 kg'};
+          const weight=await request('/api/trace/weights',{method:'POST',headers:auth,body:JSON.stringify(draftPayload)});
+          if(weight.status!=='DRAFT'||weight.document_no!=='PESH-2026-000001'||Number(weight.accepted_weight)!==200) throw new Error('Drafti online ose numri PESH nuk është i saktë.');
+          const edited=await request(`/api/trace/weights/${weight.id}`,{method:'PATCH',headers:auth,body:JSON.stringify({...draftPayload,vehiclePlate:'AA002AA'})});
+          if(edited.vehicle_plate!=='AA002AA'||Number(edited.accepted_weight)!==200) throw new Error('Editimi i Draftit online dështoi.');
+          const posted=await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE',botanicalName:'Rubus fruticosus',plantPart:'Gjethe',notes:'Loti krijohet automatikisht'})});
+          if(Number(posted.lot.quantityCreated)!==200||Number(posted.lot.quantityAvailable)!==200) throw new Error('Loti automatik nuk ka 200 kg.');
+          if(posted.lot.lotNumber!=='RAW-GJF-20260722-0001') throw new Error(`Numri automatik i lotit gabim: ${posted.lot.lotNumber}`);
+          if(posted.receipt.documentNo!=='FH-2026-000001') throw new Error(`Numri i Fletë-Hyrjes gabim: ${posted.receipt.documentNo}`);
+          let duplicateBlocked=false, editAfterPostBlocked=false;
+          try{await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-20',qualityStatus:'QUARANTINE'})});}catch(e){duplicateBlocked=e.status===409;}
+          try{await request(`/api/trace/weights/${weight.id}`,{method:'PATCH',headers:auth,body:JSON.stringify(draftPayload)});}catch(e){editAfterPostBlocked=e.status===409;}
+          if(!duplicateBlocked||!editAfterPostBlocked) throw new Error('Postimi i dyfishtë ose editimi pas postimit nuk u bllokua.');
+          const lots=await request('/api/trace/lots',{headers:auth});
+          if(lots.length!==1||lots[0].lot_number!==posted.lot.lotNumber) throw new Error('Regjistri i loteve nuk ka saktësisht një lot.');
+          const trace=await request(`/api/trace/lots/${posted.lot.id}/360`,{headers:auth});
+          if(trace.lot.weight_document_no!==weight.document_no||trace.lot.receipt_document_no!==posted.receipt.documentNo) throw new Error('Gjurmimi 360 nuk lidh peshimin dhe Fletë-Hyrjen.');
+          if(trace.movements.length!==1||trace.movements[0].movement_type!=='RECEIPT_IN'||Number(trace.movements[0].balance_after)!==200) throw new Error('Lëvizja RECEIPT_IN mungon.');
+          const stock=await request('/api/stock',{headers:auth});
+          const stockLine=stock.find(x=>x.product_id===product.id&&x.warehouse_id===warehouse.id);
+          if(!stockLine||Number(stockLine.quantity_base)!==200) throw new Error('Stoku nuk është 200 kg.');
+          const quality=await request(`/api/trace/lots/${posted.lot.id}/quality-check`,{method:'POST',headers:auth,body:JSON.stringify({result:'APPROVED',moisturePercent:9.2,impurityPercent:0.8,laboratoryReference:'LAB-001',notes:'Aprovuar'})});
+          if(quality.status!=='AVAILABLE') throw new Error('Aprovimi i cilësisë nuk e bëri lotin AVAILABLE.');
+          const traceAfter=await request(`/api/trace/lots/${posted.lot.id}/360`,{headers:auth});
+          if(traceAfter.qualityChecks.length!==1||traceAfter.lot.status!=='AVAILABLE') throw new Error('Kontrolli i cilësisë nuk u ruajt në gjurmën 360.');
+          console.log(JSON.stringify({result:'TEST_SUCCESS',weight:weight.document_no,receipt:posted.receipt.documentNo,lot:posted.lot.lotNumber,quantity:200,stock:200,quality:'AVAILABLE',draftCreated:true,draftEdited:true,duplicateBlocked,editAfterPostBlocked,trace360:true},null,2));
+          NODE
+          status=$?
+          echo '' >> /tmp/phase4-report/test.log
+          echo '--- API SERVER LOG ---' >> /tmp/phase4-report/test.log
+          cat /tmp/phase4-api.log >> /tmp/phase4-report/test.log 2>&1 || true
+          cat /tmp/phase4-report/test.log
+          exit $status
+      - name: Upload Phase 4 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-auto-lot-report
+          path: /tmp/phase4-report/test.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce Phase 4 result
+        if: steps.phase4_test.outcome != 'success'
+        run: exit 1
+      - name: Commit verified draft routes
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && steps.phase4_test.outcome == 'success'
+        run: |
+          if [ -f .github/workflows/add-phase4-weight-draft-api.yml ]; then
+            rm -f .github/workflows/add-phase4-weight-draft-api.yml
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add apps/api/src/phase4-traceability.js .github/workflows/add-phase4-weight-draft-api.yml
+            git commit -m 'Add verified online weight draft routes'
+            git push origin HEAD:phase4-full-traceability-operations
+          fi
+      - name: Stop API
+        if: always()
+        run: kill $(cat /tmp/phase4-api.pid) || true

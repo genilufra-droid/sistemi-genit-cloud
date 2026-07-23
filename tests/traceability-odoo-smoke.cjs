@@ -49,9 +49,9 @@ let diagnosticPage = null;
   await page.waitForSelector('#sg-demo-trace-btn', { state: 'visible' });
   const ids = await page.evaluate(async () => {
     const d = App.SGOdooTrace.DEMO;
-    await App.createFerreDemoScenario();
+    await App.SGOdooTrace.createDemoScenario();
     const lot = await DB.get('lots', d.lotId);
-    if (!lot) throw new Error('Butoni demonstrues nuk krijoi lotin në IndexedDB.');
+    if (!lot) throw new Error('Motori demonstrues nuk krijoi lotin në IndexedDB.');
     return { lotId: d.lotId, saleId: d.saleId, batchId: d.batchId, lotNumber: d.lotNumber, batchNumber: d.batchNumber };
   });
   await page.waitForFunction(id => (App.data.lots || []).some(x => x.id === id), ids.lotId, { timeout: 30000 });
