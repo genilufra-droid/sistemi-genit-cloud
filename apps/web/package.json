@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "npm run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}",
-    "build": "node ../../scripts/patch-odoo-traceability.cjs && node ../../scripts/patch-cloud-context-stability.cjs && node ../../scripts/patch-quick-create-cloud.cjs && node ../../scripts/patch-cloud-erp.cjs && node ../../scripts/patch-phase4-traceability.cjs && node ../../scripts/patch-phase4-processing-ui.cjs && node ../../scripts/patch-global-create-cta.cjs && rm -rf dist && mkdir -p dist && cp index.html dist/index.html",
+    "build": "node ../../scripts/patch-odoo-traceability.cjs && node ../../scripts/patch-cloud-context-stability.cjs && node ../../scripts/patch-cloud-weight-trace-fields.cjs && node ../../scripts/patch-quick-create-cloud.cjs && node ../../scripts/patch-cloud-erp.cjs && node ../../scripts/patch-phase4-traceability.cjs && node ../../scripts/patch-phase4-processing-ui.cjs && node ../../scripts/patch-global-create-cta.cjs && rm -rf dist && mkdir -p dist && cp index.html dist/index.html",
     "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
