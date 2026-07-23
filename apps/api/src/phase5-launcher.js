@@ -10,6 +10,8 @@ import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDoss
 import { installPhase62TraceabilityHotfixRoutes, migratePhase62TraceabilityHotfix } from './phase62-traceability-hotfix.js';
 import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
 
+pg.types.setTypeParser(1082, (value) => value);
+
 function normalizeTraceabilitySql(sql) {
   if (typeof sql !== 'string') return sql;
   let normalized = sql;
