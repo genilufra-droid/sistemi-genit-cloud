@@ -15,6 +15,16 @@ replaceOnce(
 'initial module render');
 
 replaceOnce(
+"if(!processCalc.includes('0 kg')||!processCalc.includes('90%'))throw new Error('Bilanci vizual i Urdhrit të Punës është gabim: '+processCalc);",
+"if(!/0(?:[.,]0+)? kg/.test(processCalc)||!/90(?:[.,]0+)?%/.test(processCalc))throw new Error('Bilanci vizual i Urdhrit të Punës është gabim: '+processCalc);",
+'process formatted balance');
+
+replaceOnce(
+"if((packCalc.match(/0 kg/g)||[]).length<2)throw new Error('Bilanci vizual i Paketimit është gabim: '+packCalc);",
+"if((packCalc.match(/0(?:[.,]0+)? kg/g)||[]).length<2)throw new Error('Bilanci vizual i Paketimit është gabim: '+packCalc);",
+'packaging formatted balance');
+
+replaceOnce(
 "await page.evaluate(()=>App.saveProcessOrderOnline(''));await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('UP-2026-000001'));if(state.processCreates!==1)throw new Error('Drafti i procesit nuk arriti në API.');",
 "await page.evaluate(()=>App.saveProcessOrderOnline(''));if(state.processCreates!==1){const diagnostic=await page.evaluate(()=>({content:document.getElementById('content')?.innerText.slice(0,1600),modal:document.getElementById('modal-box')?.innerText.slice(0,1000)}));throw new Error('Drafti i procesit nuk arriti në API: '+JSON.stringify(diagnostic));}await page.evaluate(()=>App.view_traceProcesses());await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('UP-2026-000001'));",
 'process draft render');
@@ -41,5 +51,5 @@ replaceOnce(
 
 fs.writeFileSync(target,source);
 const check=fs.readFileSync(target,'utf8');
-if(!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
+if(!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
 console.log('Phase 4.2 browser smoke test patched deterministically.');
