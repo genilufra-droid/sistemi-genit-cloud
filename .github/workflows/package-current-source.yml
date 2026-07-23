@@ -1,0 +1,46 @@
+name: Package current source ZIP
+
+on:
+  push:
+    branches: [phase4-processing-packaging]
+    paths:
+      - '.github/workflows/package-current-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase4-processing-packaging
+          fetch-depth: 1
+      - name: Add source manifest
+        run: |
+          mkdir -p source-package
+          rsync -a ./ source-package/sistemi-genit-cloud/ \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude 'source-package' \
+            --exclude '*.zip'
+          {
+            echo 'Sistemi Genit Cloud — Source Code'
+            echo 'Branch: phase4-processing-packaging'
+            echo "Commit: $(git rev-parse HEAD)"
+            echo "Generated UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo 'Includes Phase 4.1 automatic lot and current Phase 4.2 processing/packaging work.'
+          } > source-package/sistemi-genit-cloud/SOURCE_MANIFEST.txt
+      - name: Create ZIP
+        working-directory: source-package
+        run: zip -qr ../Sistemi_Genit_Cloud_Current_Source.zip sistemi-genit-cloud
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sistemi-Genit-Cloud-Current-Source
+          path: Sistemi_Genit_Cloud_Current_Source.zip
+          if-no-files-found: error
+          retention-days: 7
