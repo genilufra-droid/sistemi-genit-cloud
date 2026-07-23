@@ -1,0 +1,160 @@
+name: Test Phase 6 expenses logistics and assets
+
+on:
+  push:
+    branches: [phase6-expenses-logistics-assets]
+    paths:
+      - 'apps/api/**'
+      - 'scripts/patch-phase6-operations-integration.py'
+      - '.github/workflows/test-phase6-operations.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  operations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_phase6_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_phase6_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_phase6_test
+      JWT_SECRET: phase6-operations-test-secret-minimum-32-characters
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Apply integration and validate source
+        run: |
+          python3 scripts/patch-phase6-operations-integration.py
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+      - name: Start API through Phase 5/6 launcher
+        run: |
+          cd apps/api
+          npm start > /tmp/phase6-api.log 2>&1 &
+          echo $! > /tmp/phase6-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase6-api.log
+          exit 1
+      - name: Verify expenses logistics assets and reports
+        id: phase6_test
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/phase6-report
+          node <<'NODE' > /tmp/phase6-report/test.log 2>&1
+          const base='http://127.0.0.1:3000';
+          async function request(path,options={}){
+            const response=await fetch(base+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+            const raw=await response.text();let body;try{body=JSON.parse(raw)}catch{body={text:raw}};
+            if(!response.ok){const e=new Error(`${response.status} ${path}: ${body.message||raw}`);e.status=response.status;e.body=body;throw e;}
+            return body;
+          }
+          const setup=await request('/api/setup/admin',{method:'POST',body:JSON.stringify({organizationName:'Genit Operations',companyName:'Genit Operations Test',companyNipt:'L60000000O',warehouseName:'Magazina Qendrore',adminName:'Administrator Operacionesh',username:'admin_ops',email:'ops@genit.test',password:'AdminOperations123'})});
+          const auth={Authorization:`Bearer ${setup.token}`};
+          const boot=await request('/api/cloud/bootstrap',{headers:auth});
+          const company=boot.companies[0],warehouse=boot.warehouses[0];
+          const cash=await request('/api/finance/accounts',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,accountKind:'CASH',code:'ARKA-01',name:'Arka Kryesore',currency:'ALL',openingBalance:100000,openingDate:'2026-07-01',responsibleUserId:null,bankName:'',iban:'',accountNumber:'',active:true,notes:''})});
+          const bank=await request('/api/finance/accounts',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:null,accountKind:'BANK',code:'BANKA-01',name:'Banka Kryesore',currency:'ALL',openingBalance:100000,openingDate:'2026-07-01',responsibleUserId:null,bankName:'Banka Test',iban:'AL47212110090000000235698741',accountNumber:'123456',active:true,notes:''})});
+          const supplier=await request('/api/partners',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,partnerType:'SUPPLIER',code:'SUP-OPS',name:'Servis dhe Furnizime sh.p.k.',nipt:'L60000001S',address:'Lushnje',city:'Lushnje',phone:'',email:'',creditLimit:0,active:true})});
+          const vehicle=await request('/api/logistics/vehicles',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'MJ-001',plateNo:'AA600OP',vehicleType:'Kamion',make:'Mercedes',model:'Atego',year:2024,capacityKg:5000,odometerKm:1000,fuelType:'Diesel',fuelNormL100Km:12,ownershipType:'OWNED',chassisNo:'WDBOPS600',registrationExpiry:'2027-07-01',insuranceExpiry:'2027-06-01',technicalInspectionExpiry:'2027-05-01',active:true,notes:''})});
+
+          const category=await request('/api/operations/expense-categories',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'ADMIN',name:'Shpenzime Administrative',expenseGroup:'ADMIN',active:true})});
+          const expense=await request('/api/operations/expenses',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,categoryId:category.id,expenseDate:'2026-07-23',expenseType:'OPERATING',description:'Materiale zyre',amountNet:1000,vatRate:20,currency:'ALL',supplierId:supplier.id,accountId:cash.id,referenceNo:'REF-ADMIN',invoiceNo:'INV-ADMIN',invoiceDate:'2026-07-23',dueDate:'2026-07-23',costCenter:'Administratë',lotId:null,processOrderId:null,shipmentId:null,vehicleId:null,assetId:null,tripId:null})});
+          if(expense.status!=='DRAFT'||Number(expense.total_amount)!==1200)throw new Error(`Drafti i shpenzimit gabim: ${JSON.stringify(expense)}`);
+          await request(`/api/operations/expenses/${expense.id}/approve`,{method:'POST',headers:auth,body:'{}'});
+          const postedExpense=await request(`/api/operations/expenses/${expense.id}/post`,{method:'POST',headers:auth,body:JSON.stringify({accountId:cash.id,paymentDate:'2026-07-23'})});
+          if(postedExpense.paymentStatus!=='PAID'||postedExpense.financeDocument.type!=='CASH_PAYMENT')throw new Error('Shpenzimi nuk u lidh me Mandat Pagesën e Arkës.');
+          let duplicatePostBlocked=false;try{await request(`/api/operations/expenses/${expense.id}/post`,{method:'POST',headers:auth,body:JSON.stringify({accountId:cash.id})});}catch(e){duplicatePostBlocked=e.status===409;}
+          if(!duplicatePostBlocked)throw new Error('Postimi i dyfishtë i shpenzimit nuk u bllokua.');
+
+          const driver=await request('/api/operations/drivers',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'SH-001',fullName:'Arben Shoferi',phone:'+355690000001',licenseNo:'PAT-600',licenseCategory:'C',licenseExpiry:'2028-07-01',employmentType:'EMPLOYEE',active:true,notes:''})});
+          const route=await request('/api/operations/routes',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'RT-001',name:'Lushnje - Tiranë',origin:'Lushnje',destination:'Tiranë',destinationCountry:'Shqipëri',borderPoint:'',plannedDistanceKm:200,plannedHours:4,tollsEstimate:100,active:true,notes:''})});
+          const trip=await request('/api/operations/trips',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,tripDate:'2026-07-23',vehicleId:vehicle.id,driverId:driver.id,routeId:route.id,shipmentId:null,purpose:'Dërgesë prove',plannedDepartureAt:'2026-07-23T08:00:00+02:00',odometerStart:1000,tollsCost:100,parkingCost:50,otherCost:50,notes:''})});
+          await request(`/api/operations/trips/${trip.id}/start`,{method:'POST',headers:auth,body:'{}'});
+          const completedTrip=await request(`/api/operations/trips/${trip.id}/complete`,{method:'POST',headers:auth,body:JSON.stringify({odometerEnd:1200,arrivalAt:'2026-07-23T12:00:00+02:00',notes:'Përfunduar'})});
+          if(Number(completedTrip.distanceKm)!==200)throw new Error(`Kilometrat e udhëtimit janë ${completedTrip.distanceKm}.`);
+
+          const fuel=await request('/api/operations/fuel',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,entryDate:'2026-07-23',vehicleId:vehicle.id,tripId:trip.id,odometerKm:1200,liters:30,pricePerLiter:200,stationName:'Karburant Test',invoiceNo:'FUEL-600',fullTank:true,accountId:cash.id,currency:'ALL',notes:''})});
+          if(Number(fuel.total_amount)!==6000||fuel.expense.payment.type!=='CASH_PAYMENT')throw new Error('Karburanti nuk krijoi shpenzimin/pagesën e saktë.');
+          const maintenance=await request('/api/operations/maintenance',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,vehicleId:vehicle.id,maintenanceType:'REPAIR',reportedDate:'2026-07-23',odometerKm:1200,supplierId:supplier.id,description:'Ndërrim disku frenash',partsDescription:'Disk + ferota',costAmount:3000,downtimeHours:5,nextServiceDate:'2027-01-23',nextServiceOdometer:2000,accountId:cash.id,currency:'ALL',notes:''})});
+          await request(`/api/operations/maintenance/${maintenance.id}/start`,{method:'POST',headers:auth,body:'{}'});
+          const completedMaintenance=await request(`/api/operations/maintenance/${maintenance.id}/complete`,{method:'POST',headers:auth,body:JSON.stringify({accountId:cash.id,currency:'ALL',completionDate:'2026-07-23'})});
+          if(completedMaintenance.status!=='COMPLETED'||Number(completedMaintenance.expense.total)!==3000)throw new Error('Riparimi nuk krijoi shpenzimin e saktë.');
+
+          const asset=await request('/api/operations/assets',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,assetCode:'AST-001',assetName:'Makineri Paketimi',category:'Makineri',serialNo:'SER-600',manufacturer:'PackTech',model:'P600',barcode:'AST600',location:'Reparti Paketimit',responsibleUserId:null,responsibleDepartment:'Prodhim',supplierId:supplier.id,purchaseDocumentId:null,acquisitionDate:'2026-07-23',activationDate:null,acquisitionCost:12000,residualValue:0,usefulLifeMonths:12,depreciationMethod:'STRAIGHT_LINE',warrantyExpiry:'2028-07-23',depreciationStartDate:'2026-07-23',nextMaintenanceDate:'2027-01-23',notes:''})});
+          const activated=await request(`/api/operations/assets/${asset.id}/activate`,{method:'POST',headers:auth,body:JSON.stringify({activationDate:'2026-07-23',registerInvestmentExpense:true,accountId:bank.id,currency:'ALL'})});
+          if(activated.status!=='ACTIVE'||Number(activated.investmentExpense.total)!==12000)throw new Error('Investimi i asetit nuk u regjistrua.');
+          const depreciation=await request(`/api/operations/assets/${asset.id}/depreciate`,{method:'POST',headers:auth,body:JSON.stringify({periodDate:'2026-07-31',amount:null,notes:'Amortizimi mujor'})});
+          if(Number(depreciation.amount)!==1000||Number(depreciation.bookValueAfter)!==11000)throw new Error(`Amortizimi gabim: ${JSON.stringify(depreciation)}`);
+          const assetMaintenance=await request(`/api/operations/assets/${asset.id}/maintenance`,{method:'POST',headers:auth,body:JSON.stringify({maintenanceDate:'2026-08-01',maintenanceType:'SERVICE',description:'Kontroll periodik',supplierId:supplier.id,costAmount:500,downtimeHours:2,nextMaintenanceDate:'2027-02-01',accountId:cash.id,currency:'ALL'})});
+          if(Number(assetMaintenance.expense.total)!==500)throw new Error('Mirëmbajtja e asetit nuk krijoi shpenzim.');
+          await request(`/api/operations/assets/${asset.id}/dispose`,{method:'POST',headers:auth,body:JSON.stringify({disposalDate:'2026-12-31',disposalValue:2000,notes:'Çregjistrim prove'})});
+
+          const logisticsCatalog=await request('/api/operations/logistics/reports/catalog',{headers:auth});
+          if(logisticsCatalog.length!==15)throw new Error(`Katalogu i logjistikës ka ${logisticsCatalog.length} raporte.`);
+          const reportCounts={};for(const report of logisticsCatalog){const rows=await request(`/api/operations/logistics/reports/${report.code}?from=2026-07-01&to=2026-12-31`,{headers:auth});reportCounts[report.code]=rows.length;}
+          const consumption=await request('/api/operations/logistics/reports/fuel-consumption?from=2026-07-01&to=2026-12-31',{headers:auth});const consumptionRow=consumption.find(x=>x.plate_no==='AA600OP');if(Math.abs(Number(consumptionRow.actual_l_100km)-15)>0.001)throw new Error(`Konsumi real është ${consumptionRow.actual_l_100km}, jo 15.`);
+          const costPerKm=await request('/api/operations/logistics/reports/cost-per-km?from=2026-07-01&to=2026-12-31',{headers:auth});const costRow=costPerKm.find(x=>x.plate_no==='AA600OP');if(Math.abs(Number(costRow.cost_per_km)-46)>0.001)throw new Error(`Kosto/km është ${costRow.cost_per_km}, jo 46.`);
+          const assetCatalog=await request('/api/operations/assets/reports/catalog',{headers:auth});if(assetCatalog.length!==10)throw new Error(`Katalogu i aseteve ka ${assetCatalog.length} raporte.`);
+          for(const report of assetCatalog)await request(`/api/operations/assets/reports/${report.code}`,{headers:auth});
+          const disposed=await request('/api/operations/assets/reports/disposed',{headers:auth});const disposedRow=disposed.find(x=>x.asset_code==='AST-001');if(Number(disposedRow.disposal_gain_loss)!==-9000)throw new Error(`Rezultati i çregjistrimit është ${disposedRow.disposal_gain_loss}.`);
+          const summary=await request('/api/operations/expenses/reports/summary?from=2026-07-01&to=2026-12-31',{headers:auth});const totalExpenses=summary.reduce((sum,x)=>sum+Number(x.total_amount),0);if(Math.abs(totalExpenses-22700)>0.001)throw new Error(`Shpenzimet totale janë ${totalExpenses}, jo 22700.`);
+          const accounts=await request('/api/finance/accounts',{headers:auth});const cashFinal=accounts.find(x=>x.id===cash.id),bankFinal=accounts.find(x=>x.id===bank.id);if(Number(cashFinal.balance)!==89300)throw new Error(`Saldo e arkës është ${cashFinal.balance}, jo 89300.`);if(Number(bankFinal.balance)!==88000)throw new Error(`Saldo e bankës është ${bankFinal.balance}, jo 88000.`);
+          const financeDocuments=await request('/api/finance/documents?status=POSTED',{headers:auth});if(financeDocuments.length!==5)throw new Error(`Dokumentet financiare janë ${financeDocuments.length}, jo 5.`);
+          console.log(JSON.stringify({result:'TEST_SUCCESS',expenseNo:expense.expense_no,tripNo:trip.trip_no,distanceKm:200,fuelLiters:30,actualConsumption:15,maintenanceCost:3000,assetCode:asset.asset_code,depreciation:1000,bookValue:11000,totalExpenses:22700,cashBalance:89300,bankBalance:88000,logisticsReports:15,assetReports:10,duplicatePostBlocked,reportCounts},null,2));
+          NODE
+          status=$?
+          echo '' >> /tmp/phase6-report/test.log
+          echo '--- API LOG ---' >> /tmp/phase6-report/test.log
+          cat /tmp/phase6-api.log >> /tmp/phase6-report/test.log || true
+          cat /tmp/phase6-report/test.log
+          exit $status
+      - name: Verify migration is restart-safe
+        if: steps.phase6_test.outcome == 'success'
+        run: |
+          kill $(cat /tmp/phase6-api.pid)
+          sleep 1
+          cd apps/api
+          npm start > /tmp/phase6-restart.log 2>&1 &
+          echo $! > /tmp/phase6-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase6-restart.log
+          exit 1
+      - name: Upload Phase 6 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase6-operations-report
+          path: |
+            /tmp/phase6-report/test.log
+            /tmp/phase6-restart.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Enforce Phase 6 result
+        if: steps.phase6_test.outcome != 'success'
+        run: exit 1
+      - name: Stop API
+        if: always()
+        run: test -f /tmp/phase6-api.pid && kill $(cat /tmp/phase6-api.pid) || true
