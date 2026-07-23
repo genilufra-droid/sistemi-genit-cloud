@@ -81,7 +81,7 @@ jobs:
           retention-days: 7
 
       - name: Fail when scenario failed
-        if: steps.scenario.outcome != 'success'
+        if: ${{ steps.scenario.outcome == 'failure' }}
         run: |
           cat /tmp/phase62-scenario.log || true
           exit 1
@@ -99,7 +99,7 @@ jobs:
           fi
           echo "$OUTPUT" | grep -q 'System action events are immutable'
 
-      - name: Build web with workflow, 58mm label and device audit markers
+      - name: Build web with workflow, weight preview, 58mm label and device audit markers
         run: |
           cd apps/web
           npm ci --workspaces=false
@@ -107,6 +107,8 @@ jobs:
           grep -q 'SG_PHASE62_TRACEABILITY_WORKFLOW_UI_START' dist/index.html
           grep -q 'Dosja e Gjurmueshmërisë' dist/index.html
           grep -q 'Nr. Ambalazheve' dist/index.html
+          grep -q 'SG_PHASE62_WEIGHT_DOCUMENT_UI_START' dist/index.html
+          grep -q 'Pamje · Formulari i Peshës' dist/index.html
           grep -q 'SG_PHASE62_LOT_LABEL_58MM_UI_START' dist/index.html
           grep -q 'PESHË NETO' dist/index.html
           grep -q 'format:\[58,72\]' dist/index.html
