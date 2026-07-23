@@ -3,6 +3,8 @@ name: Package complete source ZIP
 on:
   push:
     branches: [package-source-zip-20260723]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: package-source-zip-20260723
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
 
       - name: Create clean source package
@@ -32,7 +34,7 @@ jobs:
             --exclude "$ROOT.zip"
           printf '%s\n' \
             'Sistemi Genit Cloud — Source Code i plotë aktual' \
-            'Branch burim: main + workflow paketimi teknik' \
+            'Burimi: main + workflow teknik i paketimit' \
             "Commit: ${GITHUB_SHA}" \
             "Gjeneruar: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             > "$ROOT/SOURCE_PACKAGE_INFO.txt"
