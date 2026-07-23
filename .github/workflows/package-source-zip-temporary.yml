@@ -1,0 +1,52 @@
+name: Temporary package full source ZIP
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Create exact main source ZIP
+        run: |
+          set -euo pipefail
+          ROOT="Sistemi_Genit_Cloud_Source_Full"
+          rm -rf "$ROOT" "$ROOT.zip"
+          mkdir -p "$ROOT"
+          rsync -a ./ "$ROOT/" \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'dist/' \
+            --exclude '*.log' \
+            --exclude '.github/workflows/package-source-zip-temporary.yml' \
+            --exclude "$ROOT/" \
+            --exclude "$ROOT.zip"
+          printf '%s\n' \
+            'Sistemi Genit Cloud — Source Code i plotë aktual' \
+            'Burimi: branch main' \
+            "Commit: $(git rev-parse HEAD)" \
+            "Gjeneruar: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            > "$ROOT/SOURCE_PACKAGE_INFO.txt"
+          zip -r -9 "$ROOT.zip" "$ROOT"
+          sha256sum "$ROOT.zip" > "$ROOT.zip.sha256"
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sistemi_Genit_Cloud_Source_Full
+          path: |
+            Sistemi_Genit_Cloud_Source_Full.zip
+            Sistemi_Genit_Cloud_Source_Full.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
