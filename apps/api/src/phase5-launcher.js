@@ -18,6 +18,9 @@ function normalizeTraceabilitySql(sql) {
   if (/INSERT\s+INTO\s+cloud_change_events/i.test(normalized) && /'UPSERT'/i.test(normalized)) {
     normalized = normalized.replace(/'UPSERT'/gi, "'UPDATE'");
   }
+  if (/INSERT\s+INTO\s+trace_lots/i.test(normalized) && /trace_dossier_id\s*,\s*display_label\s*,\s*packaging_count\s*,\s*packaging_unit/i.test(normalized) && /,\$26\)\s*$/i.test(normalized)) {
+    normalized = normalized.replace(/,\$26\)\s*$/i, ')');
+  }
   if (/FROM\s+trace_lots\s+l/i.test(normalized) && /bp\.name\s+AS\s+supplier_name\s*,\s*bp\.nipt\s+AS\s+supplier_nipt/i.test(normalized) && !/bp\.code\s+AS\s+supplier_code/i.test(normalized)) {
     normalized = normalized.replace(/bp\.name\s+AS\s+supplier_name\s*,\s*bp\.nipt\s+AS\s+supplier_nipt/i, 'bp.code AS supplier_code,bp.name AS supplier_name,bp.nipt AS supplier_nipt');
   }
