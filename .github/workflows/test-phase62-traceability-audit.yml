@@ -2,7 +2,7 @@ name: Test Phase 6.2 traceability dossier and audit
 
 on:
   push:
-    branches: [phase62-traceability-dossier]
+    branches: [phase62-traceability-dossier, fix-phase62-cors-fetch]
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
@@ -62,6 +62,28 @@ jobs:
           cat /tmp/phase62-api.log
           exit 1
 
+      - name: Verify browser CORS preflight with device audit headers
+        run: |
+          curl --silent --show-error --dump-header /tmp/phase62-cors-options.headers --output /dev/null \
+            --request OPTIONS http://127.0.0.1:3000/api/trace/workflow/weights/00000000-0000-4000-8000-000000000000/lines \
+            --header 'Origin: http://127.0.0.1:4173' \
+            --header 'Access-Control-Request-Method: PUT' \
+            --header 'Access-Control-Request-Headers: authorization,content-type,x-sg-device-id,x-sg-device-name,x-sg-device-platform,x-sg-device-timezone,x-sg-client-time,x-sg-device-serial'
+          tr -d '\r' < /tmp/phase62-cors-options.headers | tee /tmp/phase62-cors-options.normalized
+          grep -qi '^HTTP/.* 204' /tmp/phase62-cors-options.normalized
+          grep -qi '^Access-Control-Allow-Origin: http://127.0.0.1:4173$' /tmp/phase62-cors-options.normalized
+          grep -qi '^Access-Control-Allow-Methods: .*PUT' /tmp/phase62-cors-options.normalized
+          for header in x-sg-device-id x-sg-device-name x-sg-device-platform x-sg-device-timezone x-sg-client-time x-sg-device-serial; do
+            grep -i '^Access-Control-Allow-Headers:' /tmp/phase62-cors-options.normalized | grep -qi "$header"
+          done
+          curl --silent --show-error --fail --dump-header /tmp/phase62-cors-get.headers \
+            http://127.0.0.1:3000/api/health \
+            --header 'Origin: http://127.0.0.1:4173' \
+            --header 'X-SG-Device-ID: test-device' \
+            --output /tmp/phase62-health.json
+          tr -d '\r' < /tmp/phase62-cors-get.headers | grep -qi '^Access-Control-Allow-Origin: http://127.0.0.1:4173$'
+          grep -q '"status":"ok"' /tmp/phase62-health.json
+
       - name: Run dossier, line-level weight, 58mm label and audit scenario
         id: scenario
         continue-on-error: true
@@ -77,6 +99,9 @@ jobs:
           path: |
             /tmp/phase62-api.log
             /tmp/phase62-scenario.log
+            /tmp/phase62-cors-options.headers
+            /tmp/phase62-cors-get.headers
+            /tmp/phase62-health.json
           if-no-files-found: warn
           retention-days: 7
 
