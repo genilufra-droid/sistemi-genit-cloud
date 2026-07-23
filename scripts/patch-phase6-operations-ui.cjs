@@ -20,5 +20,5 @@ html=html.replace(finalClose,block+'</body>\n</html>');
 fs.writeFileSync(htmlPath,html);
 const check=fs.readFileSync(htmlPath,'utf8');
 if((check.match(/SG_PHASE6_OPERATIONS_UI_START/g)||[]).length!==1)throw new Error('Patch-i Faza 6 nuk është idempotent.');
-['OPERACIONE','Paneli Operacional','Shpenzime','Kategori Shpenzimesh','Udhëtime','Karburant','Mirëmbajtje &amp; Riparime','Asete &amp; Investime','Raporte Logjistike','Raporte Asetesh','global.SGPhase6Operations'].forEach(function(marker){if(!check.includes(marker))throw new Error('Mungon '+marker+' në HTML.');});
+['OPERACIONE','Paneli Operacional','Shpenzime','Kategori Shpenzimesh','Udhëtime','Karburant','Mirëmbajtje & Riparime','Asete & Investime','Raporte Logjistike','Raporte Asetesh','global.SGPhase6Operations'].forEach(function(marker){if(!check.includes(marker))throw new Error('Mungon '+marker+' në HTML.');});
 console.log('Phase 6 operations UI patched.');
