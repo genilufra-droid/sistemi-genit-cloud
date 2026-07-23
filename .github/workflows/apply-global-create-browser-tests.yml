@@ -1,0 +1,39 @@
+name: Apply global create browser test contracts
+
+on:
+  push:
+    branches: [phase42-global-search-create-phase5]
+    paths:
+      - 'scripts/patch-global-create-browser-tests.py'
+      - '.github/workflows/apply-global-create-browser-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase42-global-search-create-phase5
+          fetch-depth: 0
+      - name: Update legacy browser test contracts
+        run: |
+          python3 scripts/patch-global-create-browser-tests.py
+          node --check tests/cloud-erp-adapter-smoke.cjs
+          node --check tests/phase42-processing-ui-smoke.cjs
+          node --check tests/phase43-export-ui-smoke.cjs
+          node --check tests/phase4-traceability-ui-smoke.cjs
+      - name: Commit test contract updates
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/cloud-erp-adapter-smoke.cjs tests/phase42-processing-ui-smoke.cjs tests/phase43-export-ui-smoke.cjs tests/phase4-traceability-ui-smoke.cjs
+          if git diff --cached --quiet; then
+            echo 'Browser test contracts already current.'
+          else
+            git commit -m 'Update browser mocks for global create capabilities'
+            git push origin HEAD:phase42-global-search-create-phase5
+          fi
