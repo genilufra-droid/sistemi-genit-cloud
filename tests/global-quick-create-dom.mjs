@@ -1,3 +1,4 @@
+// CI contract: dokumenti dhe rreshti aktiv duhet të mbeten të njëjtat nyje DOM.
 import fs from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
