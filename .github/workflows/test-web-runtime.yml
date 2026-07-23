@@ -32,7 +32,7 @@ jobs:
           node --check apps/web/phase6-operations-ui.js
           node --check apps/web/phase61-professional-ui.js
           node --check scripts/patch-phase6-operations-ui.cjs
-          node --check scripts/patch-phase61-professional-ui.cjs
+          node --check apps/web/build-scripts/patch-phase61-professional-ui.cjs
       - name: Build web
         working-directory: apps/web
         env:
