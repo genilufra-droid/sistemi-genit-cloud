@@ -10,7 +10,7 @@ on:
       - 'scripts/patch-global-create-cta.cjs'
       - 'tests/phase42-global-master-flow.mjs'
       - 'tests/global-quick-create-dom.mjs'
-      - '.github/workflows/test-global-search-create.yml'
+      - '.github/workflows/apply-global-master-data-phase5.yml'
 
 permissions:
   contents: read
@@ -34,7 +34,7 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_global_create_test
-      JWT_SECRET: phase42-global-search-create-test-secret-minimum-32
+      JWT_SECRET: phase42-global-search-phase5-test-secret-minimum-32
       NODE_ENV: test
       CORS_ORIGIN: http://127.0.0.1:4173
       PORT: 3000
@@ -49,18 +49,23 @@ jobs:
           cd apps/api
           npm ci --workspaces=false
           npm run check
-      - name: Validate global UI source
+      - name: Build Phase 5 web with global create last
         run: |
-          node --check apps/web/global-create-cta.js
-          node --check scripts/patch-global-create-cta.cjs
-      - name: Test document and row preservation in DOM
+          cd apps/web
+          npm ci --workspaces=false
+          VITE_API_URL=http://127.0.0.1:3000 GENIT_CLOUD_REQUIRED=true npm run build
+          grep -q 'SG_PHASE5_FINANCE_UI_START' dist/index.html
+          grep -q 'SG_GLOBAL_CREATE_CTA_START' dist/index.html
+          grep -q '/api/finance/accounts' dist/index.html
+          grep -q 'Nuk u gjet asnjë rezultat' dist/index.html
+      - name: Test document, row and finance-account preservation in DOM
         run: |
           npm install --no-save --ignore-scripts jsdom@26
           node tests/global-quick-create-dom.mjs
-      - name: Start API
+      - name: Start API through Phase 5 launcher
         run: |
           cd apps/api
-          node src/server.js > /tmp/genit-global-api.log 2>&1 &
+          npm start > /tmp/genit-global-api.log 2>&1 &
           echo $! > /tmp/genit-global-api.pid
           for attempt in $(seq 1 60); do
             curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
@@ -68,8 +73,11 @@ jobs:
           done
           cat /tmp/genit-global-api.log
           exit 1
-      - name: Test PostgreSQL masters and RAW to PKG
+      - name: Test PostgreSQL masters, Phase 5 accounts and RAW to PKG
         run: node tests/phase42-global-master-flow.mjs
-      - name: Show API log on failure
-        if: failure()
+      - name: Show API log
+        if: always()
         run: cat /tmp/genit-global-api.log || true
+      - name: Stop API
+        if: always()
+        run: test -f /tmp/genit-global-api.pid && kill $(cat /tmp/genit-global-api.pid) || true
