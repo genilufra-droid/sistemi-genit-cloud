@@ -1,0 +1,78 @@
+name: Test global Kërko ose Shto
+
+on:
+  push:
+    branches: [phase4.2-global-search-create-final]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/global-create-cta.*'
+      - 'scripts/patch-global-master-data-server.py'
+      - 'scripts/patch-global-create-cta.cjs'
+      - 'tests/phase42-global-master-flow.mjs'
+      - 'tests/global-quick-create-dom.mjs'
+      - '.github/workflows/test-global-search-create.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-and-ui:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_global_create_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_global_create_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_global_create_test
+      JWT_SECRET: phase42-global-search-create-test-secret-minimum-32
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+      TEST_API_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Integrate and validate API source
+        run: |
+          python3 scripts/patch-global-master-data-server.py
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+      - name: Validate global UI source
+        run: |
+          node --check apps/web/global-create-cta.js
+          node --check scripts/patch-global-create-cta.cjs
+      - name: Test document and row preservation in DOM
+        run: |
+          npm install --no-save --ignore-scripts jsdom@26
+          node tests/global-quick-create-dom.mjs
+      - name: Start API
+        run: |
+          cd apps/api
+          node src/server.js > /tmp/genit-global-api.log 2>&1 &
+          echo $! > /tmp/genit-global-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/genit-global-api.log
+          exit 1
+      - name: Test PostgreSQL masters and RAW to PKG
+        run: node tests/phase42-global-master-flow.mjs
+      - name: Show API log on failure
+        if: failure()
+        run: cat /tmp/genit-global-api.log || true
