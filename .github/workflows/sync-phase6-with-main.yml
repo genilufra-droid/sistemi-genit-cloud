@@ -1,0 +1,27 @@
+name: Sync Phase 6 with main
+
+on:
+  push:
+    branches: [phase6-expenses-logistics-assets]
+    paths:
+      - '.github/workflows/sync-phase6-with-main.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase6-expenses-logistics-assets
+          fetch-depth: 0
+      - name: Merge latest main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-edit origin/main
+          git push origin HEAD:phase6-expenses-logistics-assets
