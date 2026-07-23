@@ -8,6 +8,7 @@ const { execFileSync } = require('node:child_process');
 const WEB_ROOT = __dirname;
 const BUILD_SCRIPTS = path.join(WEB_ROOT, 'build-scripts');
 const DIST_DIR = path.join(WEB_ROOT, 'dist');
+const SOURCE_INDEX = path.join(WEB_ROOT, 'index.html');
 const PATCHES = [
   'patch-odoo-traceability.cjs',
   'patch-cloud-context-stability.cjs',
@@ -75,9 +76,10 @@ try {
     if (!html.includes(marker)) throw new Error(`Build-i final nuk përmban ${marker}.`);
   }
 
+  fs.copyFileSync(builtIndex, SOURCE_INDEX);
   fs.rmSync(DIST_DIR, { recursive: true, force: true });
   fs.mkdirSync(DIST_DIR, { recursive: true });
-  fs.copyFileSync(builtIndex, path.join(DIST_DIR, 'index.html'));
+  fs.copyFileSync(SOURCE_INDEX, path.join(DIST_DIR, 'index.html'));
   console.log(`Sistemi Genit web build completed: ${path.join(DIST_DIR, 'index.html')}`);
 } finally {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
