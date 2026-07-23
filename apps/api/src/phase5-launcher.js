@@ -121,8 +121,8 @@ installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, 
 installPhase6AssetDisposalRoute({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
 installPhase6LogisticsReportHotfix({ app:capturedApp, pool, authRequired, accessibleCompanyIds });
 installPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
-installPhase62TraceabilityDossierRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase62TraceabilityHotfixRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase62TraceabilityDossierRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
