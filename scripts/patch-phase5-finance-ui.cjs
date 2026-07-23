@@ -1,4 +1,5 @@
 'use strict';
+// Build probe: validates the Phase 5 injection in CI before Railway deploy.
 const fs=require('fs');
 const path=require('path');
 const root=path.resolve(__dirname,'..');
