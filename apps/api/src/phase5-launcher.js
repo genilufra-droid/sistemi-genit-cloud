@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { installPhase5FinanceRoutes, migratePhase5Finance } from './phase5-finance.js';
+import { installPhase6AssetDisposalRoute } from './phase6-asset-disposal.js';
+import { installPhase6LogisticsReportHotfix } from './phase6-logistics-report-hotfix.js';
+import { installPhase6OperationsRoutes, migratePhase6Operations } from './phase6-operations.js';
 
 const originalCreateServer = http.createServer;
 let capturedApp = null;
@@ -86,6 +89,7 @@ const router = capturedApp.router || capturedApp._router;
 if (!router?.stack || router.stack.length < 2) throw new Error('Express route stack nuk u gjet.');
 const terminalLayers = router.stack.splice(-2);
 await migratePhase5Finance(pool);
+await migratePhase6Operations(pool);
 await pool.query(`
   CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
   RETURNS TRIGGER AS $$
@@ -106,6 +110,9 @@ await pool.query(`
   FOR EACH ROW EXECUTE FUNCTION sg_sync_business_document_payment_fields();
 `);
 installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase6AssetDisposalRoute({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
+installPhase6LogisticsReportHotfix({ app:capturedApp, pool, authRequired, accessibleCompanyIds });
+installPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
@@ -117,10 +124,10 @@ if (modulesLayer?.route?.stack?.length) {
     { group:'Shitje & Magazinë',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje','Stoku'] },
     { group:'Gjurmueshmëri 360°',phase:4,active:true,items:['Ferma & Origjina','Parcela/Zona','Peshim & Pranim','Lote Automatike','Kontroll Cilësie','Proces & Paketim','Ngarkesa/Eksport','Recall'] },
     { group:'Arka & Banka',phase:5,active:true,items:['Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },
-    { group:'Operacione',phase:4,active:true,items:['Shpenzime','Logjistikë','Ngarkesa & Eksport','Asete & Investime'] },
+    { group:'Operacione',phase:6,active:true,items:['Shpenzime','Kategori Shpenzimesh','Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },
   ]);
 }
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 5 Finance routes installed.');
+console.log('Sistemi Genit Cloud Phase 6 Operations routes installed over Phase 5 Finance.');
