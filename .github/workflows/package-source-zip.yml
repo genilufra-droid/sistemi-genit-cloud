@@ -1,0 +1,52 @@
+name: Package complete source ZIP
+
+on:
+  push:
+    branches: [package-source-zip-20260723]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: package-source-zip-20260723
+          fetch-depth: 1
+
+      - name: Create clean source package
+        run: |
+          set -euo pipefail
+          ROOT="Sistemi_Genit_Cloud_Source_Full"
+          rm -rf "$ROOT" "$ROOT.zip"
+          mkdir -p "$ROOT"
+          rsync -a ./ "$ROOT/" \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'dist/' \
+            --exclude '*.log' \
+            --exclude "$ROOT/" \
+            --exclude "$ROOT.zip"
+          printf '%s\n' \
+            'Sistemi Genit Cloud — Source Code i plotë aktual' \
+            'Branch burim: main + workflow paketimi teknik' \
+            "Commit: ${GITHUB_SHA}" \
+            "Gjeneruar: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            > "$ROOT/SOURCE_PACKAGE_INFO.txt"
+          zip -r -9 "$ROOT.zip" "$ROOT"
+          sha256sum "$ROOT.zip" > "$ROOT.zip.sha256"
+          ls -lh "$ROOT.zip" "$ROOT.zip.sha256"
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sistemi_Genit_Cloud_Source_Full
+          path: |
+            Sistemi_Genit_Cloud_Source_Full.zip
+            Sistemi_Genit_Cloud_Source_Full.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
