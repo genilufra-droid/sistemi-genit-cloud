@@ -11,6 +11,37 @@ function requestError(message, status = 400) {
   return error;
 }
 
+async function nextSequence(client, tenantId, companyId, key) {
+  const { rows } = await client.query(`
+    INSERT INTO trace_lot_sequences(tenant_id,company_id,sequence_key,last_value)
+    VALUES($1,$2,$3,1)
+    ON CONFLICT(tenant_id,company_id,sequence_key)
+    DO UPDATE SET last_value=trace_lot_sequences.last_value+1,updated_at=NOW()
+    RETURNING last_value`, [tenantId,companyId,key]);
+  return Number(rows[0].last_value);
+}
+
+async function nextDocumentNo(client, tenantId, companyId, prefix, sourceDate) {
+  const dateText = String(sourceDate || new Date().toISOString().slice(0,10)).slice(0,10);
+  const year = dateText.slice(0,4);
+  const value = await nextSequence(client,tenantId,companyId,`${prefix}-${year}`);
+  return `${prefix}-${year}-${String(value).padStart(6,'0')}`;
+}
+
+async function addDossierDocument(client, input) {
+  const sequenceResult = await client.query(`SELECT COALESCE(MAX(sequence_no),0)+1 AS next_no FROM trace_dossier_documents WHERE dossier_id=$1`, [input.dossierId]);
+  const sequenceNo = Number(sequenceResult.rows[0].next_no || 1);
+  await client.query(`INSERT INTO trace_dossier_documents(
+      id,dossier_id,document_type,entity_type,entity_id,document_no,document_date,sequence_no,status,title,snapshot,metadata,created_by
+    ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13)
+    ON CONFLICT(dossier_id,document_type,entity_id)
+    DO UPDATE SET document_no=EXCLUDED.document_no,document_date=EXCLUDED.document_date,status=EXCLUDED.status,title=EXCLUDED.title,
+      snapshot=EXCLUDED.snapshot,metadata=EXCLUDED.metadata,updated_at=NOW()`, [
+    randomUUID(),input.dossierId,input.documentType,input.entityType,input.entityId,input.documentNo||null,input.documentDate||null,sequenceNo,
+    input.status||'POSTED',input.title||input.documentType,JSON.stringify(input.snapshot||{}),JSON.stringify(input.metadata||{}),input.createdBy||null,
+  ]);
+}
+
 export async function migratePhase62TraceabilityHotfix(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS trace_weight_ticket_lines (
@@ -37,11 +68,83 @@ export function installPhase62TraceabilityHotfixRoutes({ app, pool, authRequired
     packagingCount:z.coerce.number().min(0), grossKg:z.coerce.number().min(0), packagingKg:z.coerce.number().min(0), note:z.string().trim().max(500).optional().default(''),
   }).refine((line)=>line.packagingKg <= line.grossKg,{message:'Pesha e ambalazhit nuk mund të jetë më e madhe se pesha bruto.'});
   const linesSchema = z.object({ lines:z.array(lineSchema).min(1).max(500) });
+  const openDossierSchema = z.object({
+    farmId:z.string().uuid(), parcelId:z.string().uuid().nullable().optional(), plantId:z.string().uuid(), packagingUnit:z.string().trim().min(1).max(40).default('thasë'),
+  });
   const plantUpdateSchema = z.object({
     farmId:z.string().uuid(), productId:z.string().uuid().nullable().optional(), code:z.string().trim().min(1).max(80), name:z.string().trim().min(1).max(220),
     botanicalName:z.string().trim().max(220).optional().default(''), localName:z.string().trim().max(220).optional().default(''), plantPart:z.string().trim().max(140).optional().default(''),
     organicStatus:z.string().trim().max(80).optional().default(''), certificateNo:z.string().trim().max(140).optional().default(''), harvestSeason:z.string().trim().max(140).optional().default(''),
     notes:z.string().trim().max(2000).optional().default(''), active:z.boolean().optional().default(true),
+  });
+
+  app.post('/api/trace/workflow/weights/:id/open-dossier', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
+    const client = await pool.connect();
+    try {
+      const input = openDossierSchema.parse(req.body);
+      await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+      const weightResult = await client.query(`SELECT wt.*,bp.code AS supplier_code,bp.name AS supplier_name,p.code AS product_code,p.name AS product_name,
+          w.name AS warehouse_name,f.name AS farm_name,f.code AS farm_code,pa.name AS parcel_name,pa.code AS parcel_code,
+          tp.name AS plant_name,tp.botanical_name,tp.plant_part
+        FROM weight_tickets wt
+        JOIN business_partners bp ON bp.id=wt.supplier_id
+        JOIN products p ON p.id=wt.product_id
+        JOIN warehouses w ON w.id=wt.warehouse_id
+        LEFT JOIN trace_farms f ON f.id=wt.farm_id
+        LEFT JOIN trace_parcels pa ON pa.id=wt.parcel_id
+        LEFT JOIN trace_plants tp ON tp.id=wt.plant_id
+        WHERE wt.id=$1 AND wt.tenant_id=$2 FOR UPDATE OF wt`, [req.params.id,req.user.tenant_id]);
+      const weight = weightResult.rows[0];
+      if (!weight) throw requestError('Formulari i peshës nuk u gjet.',404);
+      await assertCompanyAccess(req.user,weight.company_id,client);
+      if (weight.status !== 'DRAFT') throw requestError('Dosja hapet nga Formulari i Peshës Draft.',409);
+
+      const origin = await client.query(`SELECT f.*,pa.id AS matched_parcel FROM trace_farms f LEFT JOIN trace_parcels pa ON pa.farm_id=f.id AND pa.id=$2
+        WHERE f.id=$1 AND f.tenant_id=$3 AND f.company_id=$4 AND f.active=TRUE`, [input.farmId,input.parcelId||null,req.user.tenant_id,weight.company_id]);
+      if (!origin.rowCount || (input.parcelId && !origin.rows[0].matched_parcel)) throw requestError('Ferma/Parcela nuk është e vlefshme.');
+      if (origin.rows[0].supplier_id && origin.rows[0].supplier_id !== weight.supplier_id) throw requestError('Ferma nuk i përket fermerit/furnitorit të peshimit.');
+      const plantResult = await client.query(`SELECT * FROM trace_plants WHERE id=$1 AND tenant_id=$2 AND company_id=$3 AND farm_id=$4 AND active=TRUE`, [input.plantId,req.user.tenant_id,weight.company_id,input.farmId]);
+      const plant = plantResult.rows[0];
+      if (!plant) throw requestError('Bima nuk i përket fermës së zgjedhur.');
+      if (plant.product_id && plant.product_id !== weight.product_id) throw requestError('Bima është lidhur me një artikull tjetër.');
+
+      let dossier = null;
+      if (weight.trace_dossier_id) {
+        const existingResult = await client.query(`SELECT * FROM trace_dossiers WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [weight.trace_dossier_id,req.user.tenant_id]);
+        dossier = existingResult.rows[0] || null;
+      }
+      if (!dossier) {
+        const dossierNo = await nextDocumentNo(client,req.user.tenant_id,weight.company_id,'DOS',weight.document_date);
+        const dossierId = randomUUID();
+        const title = `${weight.supplier_code} · ${plant.name} · ${weight.document_no}`;
+        const { rows } = await client.query(`INSERT INTO trace_dossiers(id,tenant_id,company_id,dossier_no,supplier_id,farm_id,parcel_id,plant_id,weight_ticket_id,status,title,created_by)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'WEIGHED',$10,$11) RETURNING *`, [dossierId,req.user.tenant_id,weight.company_id,dossierNo,weight.supplier_id,input.farmId,input.parcelId||null,input.plantId,weight.id,title,req.user.id]);
+        dossier = rows[0];
+      } else {
+        const { rows } = await client.query(`UPDATE trace_dossiers SET farm_id=$1,parcel_id=$2,plant_id=$3,title=$4,version=version+1,updated_at=NOW() WHERE id=$5 RETURNING *`, [input.farmId,input.parcelId||null,input.plantId,`${weight.supplier_code} · ${plant.name} · ${weight.document_no}`,dossier.id]);
+        dossier = rows[0];
+      }
+
+      await client.query(`UPDATE weight_tickets SET farm_id=$1,parcel_id=$2,plant_id=$3,trace_dossier_id=$4,packaging_unit=$5,updated_at=NOW() WHERE id=$6`, [input.farmId,input.parcelId||null,input.plantId,dossier.id,input.packagingUnit,weight.id]);
+      const linesResult = await client.query(`SELECT line_no,packaging_count,gross_kg,packaging_kg,net_kg,note FROM trace_weight_ticket_lines WHERE weight_ticket_id=$1 ORDER BY line_no`, [weight.id]);
+      await addDossierDocument(client,{
+        dossierId:dossier.id,documentType:'WEIGHT_FORM',entityType:'weight_ticket',entityId:weight.id,documentNo:weight.document_no,
+        documentDate:weight.document_date,title:'Formulari i Peshës',status:'DRAFT',createdBy:req.user.id,
+        snapshot:{
+          supplierCode:weight.supplier_code,supplierName:weight.supplier_name,productCode:weight.product_code,productName:weight.product_name,
+          bagsCount:num(weight.bags_count),packagingUnit:input.packagingUnit,grossWeight:num(weight.gross_weight),packagingWeight:num(weight.packaging_weight),
+          netWeight:num(weight.accepted_weight),unitPrice:num(weight.unit_price),totalValue:num(weight.total_value),farmName:origin.rows[0].name,plantName:plant.name,
+          lines:linesResult.rows.map((row)=>({lineNo:row.line_no,packagingCount:num(row.packaging_count),grossKg:num(row.gross_kg),packagingKg:num(row.packaging_kg),netKg:num(row.net_kg),note:row.note||''})),
+        },
+      });
+      await audit({tenantId:req.user.tenant_id,userId:req.user.id,action:'TRACE_DOSSIER_OPEN',entityType:'trace_dossier',entityId:dossier.id,companyId:weight.company_id,
+        metadata:{dossierNo:dossier.dossier_no,weightTicketId:weight.id,plantId:input.plantId,lineCount:linesResult.rowCount},ip:req.ip},client);
+      await client.query(`INSERT INTO cloud_change_events(tenant_id,company_id,entity_type,entity_id,operation,metadata,user_id)
+        VALUES($1,$2,'trace_dossier',$3,'UPSERT',$4::jsonb,$5)`, [req.user.tenant_id,weight.company_id,dossier.id,JSON.stringify({status:'WEIGHED',weightTicketId:weight.id}),req.user.id]);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id,'traceDossiers',{action:'upserted',id:dossier.id});
+      res.status(weight.trace_dossier_id?200:201).json(dossier);
+    } catch (error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
   });
 
   app.get('/api/trace/workflow/weights/:id/details', authRequired, async (req,res,next) => {
