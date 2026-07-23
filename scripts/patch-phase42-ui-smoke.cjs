@@ -16,7 +16,7 @@ replaceOnce(
 
 replaceOnce(
 "await page.evaluate(()=>App.navigate('traceProcesses'));await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('Proces & Paketim Cloud'));let text=await page.locator('#content').innerText();",
-"await page.evaluate(()=>App.navigate('traceProcesses'));await page.waitForTimeout(1500);let text=await page.locator('#content').innerText();if(!text.includes('Proces & Paketim Cloud')){const diagnostic=await page.evaluate(()=>({view:App.currentView,content:document.getElementById('content')?.innerText.slice(0,1800),toast:document.body.innerText.slice(-900),phase42:Boolean(window.SGPhase42),loadPhase4:Boolean(CloudERP.loadPhase4)}));throw new Error('Moduli Phase 4.2 nuk u renderua: '+JSON.stringify(diagnostic)+' browserErrors='+JSON.stringify(errors));}",
+"await page.evaluate(async()=>{App.navigate('traceProcesses');await App.view_traceProcesses();});let text=await page.locator('#content').innerText();if(!text.includes('Proces & Paketim Cloud')){const diagnostic=await page.evaluate(()=>({view:App.currentView,content:document.getElementById('content')?.innerText.slice(0,1800),toast:document.body.innerText.slice(-900),phase42:Boolean(window.SGPhase42),loadPhase4:Boolean(CloudERP.loadPhase4)}));throw new Error('Moduli Phase 4.2 nuk u renderua: '+JSON.stringify(diagnostic)+' browserErrors='+JSON.stringify(errors));}",
 'initial module render');
 
 replaceOnce(
@@ -61,5 +61,5 @@ replaceOnce(
 
 fs.writeFileSync(target,source);
 const check=fs.readFileSync(target,'utf8');
-if(!check.includes("App.currentView==='dashboard'")||!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes("querySelector('#source-results .sg-create-no-result').click()")||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
+if(!check.includes("App.currentView==='dashboard'")||!check.includes("await App.view_traceProcesses()")||!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes("querySelector('#source-results .sg-create-no-result').click()")||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
 console.log('Phase 4.2 browser smoke test patched deterministically.');
