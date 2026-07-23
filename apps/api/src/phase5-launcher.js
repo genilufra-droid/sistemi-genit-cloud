@@ -7,6 +7,7 @@ import { installPhase6AssetDisposalRoute } from './phase6-asset-disposal.js';
 import { installPhase6LogisticsReportHotfix } from './phase6-logistics-report-hotfix.js';
 import { installPhase6OperationsRoutes, migratePhase6Operations } from './phase6-operations.js';
 import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDossier } from './phase62-traceability-dossier.js';
+import { installPhase62TraceabilityHotfixRoutes, migratePhase62TraceabilityHotfix } from './phase62-traceability-hotfix.js';
 import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
 
 const originalCreateServer = http.createServer;
@@ -94,6 +95,7 @@ await migratePhase5Finance(pool);
 await migratePhase6Operations(pool);
 await migratePhase62TraceabilityDossier(pool);
 await migrateGlobalAuditTrail(pool);
+await migratePhase62TraceabilityHotfix(pool);
 await pool.query(`
   CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
   RETURNS TRIGGER AS $$
@@ -120,6 +122,7 @@ installPhase6AssetDisposalRoute({ app:capturedApp, pool, authRequired, requireRo
 installPhase6LogisticsReportHotfix({ app:capturedApp, pool, authRequired, accessibleCompanyIds });
 installPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase62TraceabilityDossierRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase62TraceabilityHotfixRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
@@ -129,7 +132,7 @@ if (modulesLayer?.route?.stack?.length) {
     { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log','Gjurmë Përdoruesi & Pajisjeje'] },
     { group:'Blerje & Peshim',phase:2,active:true,items:['Formulari i Peshave','Kërkesa për Ofertë','Porosi Blerjeje','Pranime','Fatura Blerjeje'] },
     { group:'Shitje & Magazinë',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje','Stoku'] },
-    { group:'Gjurmueshmëri 360°',phase:6.2,active:true,items:['Ferma & Origjina','Bimët','Formulari i Peshës','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë','Lote Automatike','Proces 1..N','Magazina Produkt i Gatshëm','Loti Final i Shitjes','Dosja e Dokumenteve'] },
+    { group:'Gjurmueshmëri 360°',phase:6.2,active:true,items:['Ferma & Origjina','Bimët','Formulari i Peshës','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë 58 mm','Lote Automatike','Proces 1..N','Magazina Produkt i Gatshëm','Loti Final i Shitjes','Dosja e Dokumenteve'] },
     { group:'Arka & Banka',phase:5,active:true,items:['Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },
     { group:'Operacione',phase:6,active:true,items:['Shpenzime','Kategori Shpenzimesh','Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },
   ]);
@@ -137,4 +140,4 @@ if (modulesLayer?.route?.stack?.length) {
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 6.2 traceability and immutable audit routes installed.');
+console.log('Sistemi Genit Cloud Phase 6.2 traceability, 58mm label and immutable audit routes installed.');
