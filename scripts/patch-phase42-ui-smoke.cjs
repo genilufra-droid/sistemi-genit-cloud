@@ -10,6 +10,11 @@ function replaceOnce(oldText,newText,label){
 }
 
 replaceOnce(
+"await page.waitForFunction(()=>Boolean(window.SGPhase42&&window.CloudERP&&window.App));",
+"await page.waitForFunction(()=>Boolean(window.SGPhase42&&window.CloudERP&&window.App));await page.waitForFunction(()=>App.currentView==='dashboard'&&App.company&&App.company.name==='Kompania Cloud Test',null,{timeout:30000});",
+'Cloud startup completion');
+
+replaceOnce(
 "await page.evaluate(()=>App.navigate('traceProcesses'));await page.waitForFunction(()=>document.getElementById('content')?.innerText.includes('Proces & Paketim Cloud'));let text=await page.locator('#content').innerText();",
 "await page.evaluate(()=>App.navigate('traceProcesses'));await page.waitForTimeout(1500);let text=await page.locator('#content').innerText();if(!text.includes('Proces & Paketim Cloud')){const diagnostic=await page.evaluate(()=>({view:App.currentView,content:document.getElementById('content')?.innerText.slice(0,1800),toast:document.body.innerText.slice(-900),phase42:Boolean(window.SGPhase42),loadPhase4:Boolean(CloudERP.loadPhase4)}));throw new Error('Moduli Phase 4.2 nuk u renderua: '+JSON.stringify(diagnostic)+' browserErrors='+JSON.stringify(errors));}",
 'initial module render');
@@ -51,5 +56,5 @@ replaceOnce(
 
 fs.writeFileSync(target,source);
 const check=fs.readFileSync(target,'utf8');
-if(!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
+if(!check.includes("App.currentView==='dashboard'")||!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
 console.log('Phase 4.2 browser smoke test patched deterministically.');
