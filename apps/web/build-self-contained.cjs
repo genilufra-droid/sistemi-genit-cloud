@@ -23,10 +23,12 @@ const PATCHES = [
   'patch-phase5-finance-ui.cjs',
   'patch-phase6-operations-ui.cjs',
   'patch-global-create-cta.cjs',
+  'patch-phase61-professional-ui.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
   'SG_PHASE6_OPERATIONS_UI_START',
+  'SG_PHASE61_PROFESSIONAL_UI_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];

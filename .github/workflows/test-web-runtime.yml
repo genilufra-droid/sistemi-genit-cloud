@@ -30,7 +30,9 @@ jobs:
           node --check apps/web/serve.cjs
           node --check apps/web/build-self-contained.cjs
           node --check apps/web/phase6-operations-ui.js
+          node --check apps/web/phase61-professional-ui.js
           node --check scripts/patch-phase6-operations-ui.cjs
+          node --check apps/web/build-scripts/patch-phase61-professional-ui.cjs
       - name: Build web
         working-directory: apps/web
         env:
@@ -52,6 +54,7 @@ jobs:
           test -s dist/index.html
           grep -q 'SG_PHASE5_FINANCE_UI_START' dist/index.html
           grep -q 'SG_PHASE6_OPERATIONS_UI_START' dist/index.html
+          grep -q 'SG_PHASE61_PROFESSIONAL_UI_START' dist/index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' dist/index.html
       - name: Start production runtime
         working-directory: apps/web
@@ -72,9 +75,11 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/ > /tmp/index.html
           grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/index.html
           grep -q 'SG_PHASE6_OPERATIONS_UI_START' /tmp/index.html
+          grep -q 'SG_PHASE61_PROFESSIONAL_UI_START' /tmp/index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/index.html
           grep -q 'Paneli Operacional' /tmp/index.html
-          grep -q 'Raporte Logjistike' /tmp/index.html
+          grep -q 'Pamje &amp; Eksport' /tmp/index.html
+          grep -q 'FORMULAR PESHE' /tmp/index.html
       - name: Stop local runtime
         run: test -f /tmp/genit-web.pid && kill $(cat /tmp/genit-web.pid) || true
       - name: Build Railway Docker image
@@ -99,6 +104,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:4174/ > /tmp/docker-index.html
           grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/docker-index.html
           grep -q 'SG_PHASE6_OPERATIONS_UI_START' /tmp/docker-index.html
+          grep -q 'SG_PHASE61_PROFESSIONAL_UI_START' /tmp/docker-index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/docker-index.html
       - name: Show logs and stop runtimes
         if: always()
