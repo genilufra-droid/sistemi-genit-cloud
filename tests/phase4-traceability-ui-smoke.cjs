@@ -32,6 +32,7 @@ const api=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/auth/me') return authorized(req)?json(res,200,{user,companyIds:[ids.company],warehouseIds:[ids.warehouse]}):json(res,401,{message:'Pa autorizim'});
     if(!authorized(req)) return json(res,401,{message:'Pa autorizim'});
     if(req.method==='GET'&&url.pathname==='/api/cloud/bootstrap'){state.bootstrapCalls++;return json(res,200,bootstrap());}
+    if(req.method==='GET'&&url.pathname==='/api/master-data/capabilities')return json(res,200,[{entityType:'FARMER',canCreate:true},{entityType:'DRIVER',canCreate:true},{entityType:'ROUTE',canCreate:true},{entityType:'AGENT',canCreate:true},{entityType:'ASSET',canCreate:true},{entityType:'EXPENSE_CATEGORY',canCreate:true},{entityType:'CASH_ACCOUNT',canCreate:true,native:true},{entityType:'BANK_ACCOUNT',canCreate:true,native:true}]);
     if(req.method==='GET'&&url.pathname==='/api/trace/farms') return json(res,200,[farm]);
     if(req.method==='GET'&&url.pathname==='/api/trace/parcels') return json(res,200,[parcel]);
     if(req.method==='GET'&&url.pathname==='/api/trace/lots') return json(res,200,state.lots);
@@ -61,6 +62,9 @@ const api=http.createServer(async(req,res)=>{
   await page.waitForSelector(`button[onclick*="${ids.weight}"]`,{timeout:30000});
   await page.evaluate(id=>App._viewWeightForm(id),ids.weight);
   await page.waitForSelector('#sg-p4-origin-panel',{state:'visible'});
+  await page.waitForSelector('#wf-lot');
+  await page.waitForSelector('#wf-p4-farm');
+  await page.waitForSelector('#wf-p4-parcel');
   const formState=await page.evaluate(()=>({lotValue:document.getElementById('wf-lot').value,lotReadonly:document.getElementById('wf-lot').readOnly,farm:document.getElementById('wf-p4-farm').value,parcel:document.getElementById('wf-p4-parcel').value,postButton:[...document.querySelectorAll('button')].some(b=>b.textContent.includes('Posto Pranimin'))}));
   if(!formState.lotReadonly||!formState.lotValue.includes('AUTOMATIK')||formState.farm!==ids.farm||formState.parcel!==ids.parcel||!formState.postButton) throw new Error(`Formulari Phase 4 nuk u konfigurua: ${JSON.stringify(formState)}`);
 

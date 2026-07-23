@@ -111,6 +111,10 @@ const api = http.createServer(async (req, res) => {
       state.bootstrapCalls += 1;
       return json(res, 200, bootstrapPayload());
     }
+    if (req.method === 'GET' && url.pathname === '/api/master-data/capabilities') {
+      if (!authorized(req)) return json(res, 401, { error: 'AUTH_REQUIRED', message: 'Duhet të identifikoheni.' });
+      return json(res, 200, [{ entityType:'FARMER', canCreate:true },{ entityType:'DRIVER', canCreate:true },{ entityType:'ROUTE', canCreate:true },{ entityType:'AGENT', canCreate:true },{ entityType:'ASSET', canCreate:true },{ entityType:'EXPENSE_CATEGORY', canCreate:true },{ entityType:'CASH_ACCOUNT', canCreate:true, native:true },{ entityType:'BANK_ACCOUNT', canCreate:true, native:true }]);
+    }
     if (req.method === 'GET' && ['/api/trace/farms', '/api/trace/parcels', '/api/trace/lots', '/api/weights'].includes(url.pathname)) {
       if (!authorized(req)) return json(res, 401, { error: 'AUTH_REQUIRED', message: 'Duhet të identifikoheni.' });
       return json(res, 200, []);
