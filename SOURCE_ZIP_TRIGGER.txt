@@ -1,0 +1,1 @@
+Trigger teknik për gjenerimin e artifact-it ZIP. Ky branch nuk bashkohet në main.
