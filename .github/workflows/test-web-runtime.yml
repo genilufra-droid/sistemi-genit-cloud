@@ -47,14 +47,39 @@ jobs:
           done
           cat /tmp/genit-web.log
           exit 1
-      - name: Verify root and Phase 5 markers
+      - name: Verify local root and Phase 5 markers
         run: |
           curl --fail --silent http://127.0.0.1:4173/ > /tmp/index.html
           grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/index.html
-      - name: Stop runtime
-        if: always()
+      - name: Stop local runtime
         run: test -f /tmp/genit-web.pid && kill $(cat /tmp/genit-web.pid) || true
-      - name: Show runtime log on failure
-        if: failure()
-        run: cat /tmp/genit-web.log || true
+      - name: Build Railway Docker image
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=https://genit-api-production.up.railway.app \
+            --build-arg GENIT_CLOUD_REQUIRED=true \
+            --build-arg GITHUB_SHA=${GITHUB_SHA} \
+            -t sistemi-genit-web:test \
+            apps/web
+      - name: Start Docker runtime
+        run: |
+          docker run -d --name sistemi-genit-web-test -e PORT=4173 -p 4174:4173 sistemi-genit-web:test
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:4174/healthz >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs sistemi-genit-web-test
+          exit 1
+      - name: Verify Docker root and markers
+        run: |
+          curl --fail --silent http://127.0.0.1:4174/ > /tmp/docker-index.html
+          grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/docker-index.html
+          grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/docker-index.html
+      - name: Show logs and stop runtimes
+        if: always()
+        run: |
+          cat /tmp/genit-web.log || true
+          test -f /tmp/genit-web.pid && kill $(cat /tmp/genit-web.pid) || true
+          docker logs sistemi-genit-web-test || true
+          docker rm -f sistemi-genit-web-test || true
