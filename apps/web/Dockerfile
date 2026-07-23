@@ -23,6 +23,7 @@ ENV VITE_API_URL=${VITE_API_URL} \
 RUN npm run build \
     && test -s dist/index.html \
     && grep -q 'SG_PHASE5_FINANCE_UI_START' dist/index.html \
+    && grep -q 'SG_PHASE6_OPERATIONS_UI_START' dist/index.html \
     && grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' dist/index.html
 
 FROM node:20-alpine AS runtime
