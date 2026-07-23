@@ -50,11 +50,16 @@ replaceOnce(
 'packaging post render');
 
 replaceOnce(
+"await page.click('#source-results .sg-create-no-result');",
+"await page.evaluate(()=>document.querySelector('#source-results .sg-create-no-result').click());",
+'quick create CTA click');
+
+replaceOnce(
 "await page.waitForFunction(()=>document.getElementById('source-preserve')?.value==='Vlerë e paruajtur'&&document.getElementById('source-product')?.dataset.selectedId===arguments[0],ids.newProduct);",
 "await page.waitForFunction((expected)=>document.getElementById('source-preserve')?.value==='Vlerë e paruajtur'&&document.getElementById('source-product')?.dataset.selectedId===expected,ids.newProduct);",
 'quick create expected id');
 
 fs.writeFileSync(target,source);
 const check=fs.readFileSync(target,'utf8');
-if(!check.includes("App.currentView==='dashboard'")||!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
+if(!check.includes("App.currentView==='dashboard'")||!check.includes('Moduli Phase 4.2 nuk u renderua:')||!check.includes('/90(?:[.,]0+)?%/')||!check.includes('Drafti i procesit nuk arriti në API:')||!check.includes("querySelector('#source-results .sg-create-no-result').click()")||!check.includes('(expected)=>document.getElementById'))throw new Error('Testi Phase 4.2 nuk u stabilizua.');
 console.log('Phase 4.2 browser smoke test patched deterministically.');
