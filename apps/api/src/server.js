@@ -14,6 +14,7 @@ import { installPhase2Routes, migratePhase2 } from './phase2.js';
 import { installPhase2DocumentRoutes, migratePhase2Documents } from './phase2-documents.js';
 import { installPhase3CloudCoreRoutes, migratePhase3CloudCore } from './phase3-cloud-core.js';
 import { installPhase4TraceabilityRoutes, migratePhase4Traceability } from './phase4-traceability.js';
+import { installPhase4ProcessingPackagingRoutes, migratePhase4ProcessingPackaging } from './phase4-processing-packaging.js';
 
 const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
@@ -135,6 +136,7 @@ async function migrate() {
     await migratePhase2Documents(client);
     await migratePhase3CloudCore(client);
     await migratePhase4Traceability(client);
+    await migratePhase4ProcessingPackaging(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -617,6 +619,7 @@ installPhase2Routes({ app, pool, authRequired, requireRoles, assertCompanyAccess
 installPhase2DocumentRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
 installPhase3CloudCoreRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase4TraceabilityRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase4ProcessingPackagingRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 
 app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: `Rruga ${req.method} ${req.path} nuk ekziston.` }));
 app.use((error, _req, res, _next) => {

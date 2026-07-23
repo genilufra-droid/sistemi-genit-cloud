@@ -1,0 +1,159 @@
+name: Test Phase 4.2 processing and packaging
+
+on:
+  push:
+    branches: [phase4-processing-packaging]
+    paths:
+      - 'apps/api/**'
+      - 'scripts/patch-phase4-processing-*.py'
+      - '.github/workflows/test-phase4-processing-packaging.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  process-packaging:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_phase42_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_phase42_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_phase42_test
+      JWT_SECRET: phase42-processing-packaging-test-secret-2026-minimum-32
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Apply idempotent Phase 4.2 patches
+        run: |
+          python3 scripts/patch-phase4-processing-server.py
+          python3 scripts/patch-phase4-processing-source.py
+      - name: Validate API source
+        run: |
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+          node --check src/phase4-processing-packaging.js
+      - name: Start API
+        run: |
+          cd apps/api
+          node src/server.js > /tmp/phase42-api.log 2>&1 &
+          echo $! > /tmp/phase42-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase42-api.log
+          exit 1
+      - name: Verify RAW to PROCESSED to PACKAGED
+        id: phase42_test
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/phase42-report
+          set +e
+          node <<'NODE' > /tmp/phase42-report/test.log 2>&1
+          const base='http://127.0.0.1:3000';
+          async function request(path,options={}){
+            const response=await fetch(base+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+            const raw=await response.text();let body;try{body=JSON.parse(raw)}catch{body={text:raw}};
+            if(!response.ok){const e=new Error(`${response.status} ${path}: ${body.message||raw}`);e.status=response.status;e.body=body;throw e;}
+            return body;
+          }
+          const setup=await request('/api/setup/admin',{method:'POST',body:JSON.stringify({organizationName:'Genit Phase 4.2',companyName:'Kompania Procesit',companyNipt:'L42000000A',warehouseName:'Magazina Qendrore',adminName:'Administrator Procesi',username:'admin_phase42',email:'admin42@example.com',password:'AdminPhase42123'})});
+          const auth={Authorization:`Bearer ${setup.token}`};
+          const boot=await request('/api/cloud/bootstrap',{headers:auth});
+          const company=boot.companies[0],warehouse=boot.warehouses[0];
+          const rawProduct=await request('/api/products',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'GJF',name:'Gjethe Ferre RAW',baseUnit:'kg',packUnit:'thes',palletUnit:'palete',packCoefficient:1,palletCoefficient:1,purchasePrice:100,salePrice:180,vatRate:0,active:true})});
+          const processedProduct=await request('/api/products',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'GJF-PRC',name:'Gjethe Ferre e Përpunuar',baseUnit:'kg',packUnit:'thes',palletUnit:'palete',packCoefficient:1,palletCoefficient:1,purchasePrice:0,salePrice:240,vatRate:0,active:true})});
+          const packagedProduct=await request('/api/products',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'GJF-PKG',name:'Gjethe Ferre Paketë 500g',baseUnit:'kg',packUnit:'pako',palletUnit:'palete',packCoefficient:0.5,palletCoefficient:1,purchasePrice:0,salePrice:320,vatRate:0,active:true})});
+          const supplier=await request('/api/partners',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,partnerType:'SUPPLIER',code:'FER-001',name:'Fermeri Tomorri',nipt:'K42000000T',address:'Skrapar',city:'Skrapar',phone:'',email:'',creditLimit:0,active:true})});
+          const farm=await request('/api/trace/farms',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,supplierId:supplier.id,code:'FERMA-001',name:'Ferma Mali i Tomorrit',sourceTypeDefault:'WILD_COLLECTION',country:'Shqiperi',region:'Berat',municipality:'Skrapar',village:'Gjerbes',locationName:'Mali i Tomorrit',active:true})});
+          const parcel=await request('/api/trace/parcels',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,farmId:farm.id,code:'ZONA-04',name:'Zona e Mbledhjes 04',sourceType:'WILD_COLLECTION',country:'Shqiperi',region:'Berat',municipality:'Skrapar',village:'Gjerbes',locationName:'Shpatet e Tomorrit',active:true})});
+          const weight=await request('/api/trace/weights',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:rawProduct.id,documentDate:'2026-07-23',bagsCount:20,grossWeight:205,packagingWeight:5,discountPercent:0,unitPrice:100,vehiclePlate:'AA420AA',farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-21',qualityStatus:'QUARANTINE',notes:'Pranim 200 kg'})});
+          const receipt=await request(`/api/weights/${weight.id}/post-receipt`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-21',qualityStatus:'QUARANTINE',botanicalName:'Rubus fruticosus',plantPart:'Gjethe',notes:'RAW automatik'})});
+          await request(`/api/trace/lots/${receipt.lot.id}/quality-check`,{method:'POST',headers:auth,body:JSON.stringify({result:'APPROVED',moisturePercent:9,impurityPercent:1,laboratoryReference:'LAB-42',notes:'Aprovuar'})});
+
+          let invalidMassBlocked=false;
+          try{await request('/api/trace/process-orders',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,outputProductId:processedProduct.id,processType:'Pastrim dhe tharje',orderDate:'2026-07-23',outputQuantity:95,wasteQuantity:3,lossQuantity:7,directCost:900,outputQualityStatus:'APPROVED',notes:'Bilanc gabim',inputs:[{lotId:receipt.lot.id,quantity:100}]})});}catch(e){invalidMassBlocked=e.status===400;}
+          if(!invalidMassBlocked)throw new Error('Bilanci i gabuar i masës nuk u bllokua.');
+
+          const processDraft=await request('/api/trace/process-orders',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,outputProductId:processedProduct.id,processType:'Pastrim dhe tharje',orderDate:'2026-07-23',outputQuantity:90,wasteQuantity:3,lossQuantity:7,directCost:900,outputQualityStatus:'APPROVED',notes:'100 kg RAW -> 90 kg PRC',inputs:[{lotId:receipt.lot.id,quantity:100}]})});
+          if(processDraft.status!=='DRAFT'||processDraft.work_order_no!=='UP-2026-000001')throw new Error(`Drafti i procesit ose numri UP gabim: ${processDraft.work_order_no}`);
+          const processPosted=await request(`/api/trace/process-orders/${processDraft.id}/post`,{method:'POST',headers:auth,body:'{}'});
+          if(processPosted.outputLot.lotNumber!=='PRC-GJF-PRC-20260723-0001'||Number(processPosted.outputLot.quantityAvailable)!==90)throw new Error(`Loti PROCESSED gabim: ${JSON.stringify(processPosted.outputLot)}`);
+          let processDuplicateBlocked=false;try{await request(`/api/trace/process-orders/${processDraft.id}/post`,{method:'POST',headers:auth,body:'{}'});}catch(e){processDuplicateBlocked=e.status===409;}
+          if(!processDuplicateBlocked)throw new Error('Postimi i dyfishtë i Urdhrit të Punës nuk u bllokua.');
+
+          let invalidPackagingBlocked=false;
+          try{await request('/api/trace/packaging-orders',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,inputLotId:processPosted.outputLot.id,outputProductId:packagedProduct.id,orderDate:'2026-07-23',inputQuantity:80,outputQuantity:78,wasteQuantity:2,packageCount:150,unitsPerPackage:1,netWeightPerPackage:0.5,directCost:500,outputQualityStatus:'APPROVED',expiryDate:'2028-07-23',notes:'Aritmetikë gabim'})});}catch(e){invalidPackagingBlocked=e.status===400;}
+          if(!invalidPackagingBlocked)throw new Error('Aritmetika e gabuar e paketimit nuk u bllokua.');
+
+          const packagingDraft=await request('/api/trace/packaging-orders',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,warehouseId:warehouse.id,inputLotId:processPosted.outputLot.id,outputProductId:packagedProduct.id,orderDate:'2026-07-23',inputQuantity:80,outputQuantity:78,wasteQuantity:2,packageCount:156,unitsPerPackage:1,netWeightPerPackage:0.5,directCost:500,outputQualityStatus:'APPROVED',expiryDate:'2028-07-23',notes:'156 pako x 0.5 kg'})});
+          if(packagingDraft.status!=='DRAFT'||packagingDraft.packaging_no!=='PAK-2026-000001')throw new Error(`Drafti i paketimit ose numri PAK gabim: ${packagingDraft.packaging_no}`);
+          const packagingPosted=await request(`/api/trace/packaging-orders/${packagingDraft.id}/post`,{method:'POST',headers:auth,body:'{}'});
+          if(packagingPosted.outputLot.lotNumber!=='PKG-GJF-PKG-20260723-0001'||Number(packagingPosted.outputLot.quantityAvailable)!==78||Number(packagingPosted.packageCount)!==156)throw new Error(`Loti PACKAGED gabim: ${JSON.stringify(packagingPosted)}`);
+          let packagingDuplicateBlocked=false;try{await request(`/api/trace/packaging-orders/${packagingDraft.id}/post`,{method:'POST',headers:auth,body:'{}'});}catch(e){packagingDuplicateBlocked=e.status===409;}
+          if(!packagingDuplicateBlocked)throw new Error('Postimi i dyfishtë i Paketimit nuk u bllokua.');
+
+          const lots=await request('/api/trace/lots',{headers:auth});
+          const raw=lots.find(x=>x.id===receipt.lot.id),processed=lots.find(x=>x.id===processPosted.outputLot.id),packaged=lots.find(x=>x.id===packagingPosted.outputLot.id);
+          if(Number(raw.quantity_available)!==100||Number(processed.quantity_available)!==10||Number(packaged.quantity_available)!==78)throw new Error(`Gjendjet e loteve janë gabim: RAW ${raw.quantity_available}, PRC ${processed.quantity_available}, PKG ${packaged.quantity_available}`);
+          const stock=await request('/api/stock',{headers:auth});
+          function stockOf(productId){return Number((stock.find(x=>x.product_id===productId&&x.warehouse_id===warehouse.id)||{}).quantity_base||0);}
+          if(stockOf(rawProduct.id)!==100||stockOf(processedProduct.id)!==10||stockOf(packagedProduct.id)!==78)throw new Error(`Stoku sipas artikullit gabim: ${stockOf(rawProduct.id)}, ${stockOf(processedProduct.id)}, ${stockOf(packagedProduct.id)}`);
+          const lineage=await request(`/api/trace/lots/${packagingPosted.outputLot.id}/lineage`,{headers:auth});
+          const types=lineage.ancestors.map(x=>x.lot_type).join('>');
+          if(types!=='RAW>PROCESSED>PACKAGED')throw new Error(`Linja e lotit është gabim: ${types}`);
+          const processList=await request('/api/trace/process-orders',{headers:auth});
+          const packagingList=await request('/api/trace/packaging-orders',{headers:auth});
+          if(processList.length!==1||processList[0].status!=='POSTED'||packagingList.length!==1||packagingList[0].status!=='POSTED')throw new Error('Regjistrat e Procesit/Paketimit nuk u postuan saktë.');
+          console.log(JSON.stringify({result:'TEST_SUCCESS',rawLot:receipt.lot.lotNumber,rawAvailable:100,workOrder:processDraft.work_order_no,processedLot:processPosted.outputLot.lotNumber,processedAvailable:10,packagingOrder:packagingDraft.packaging_no,packagedLot:packagingPosted.outputLot.lotNumber,packagedAvailable:78,packages:156,lineage:types,invalidMassBlocked,invalidPackagingBlocked,processDuplicateBlocked,packagingDuplicateBlocked},null,2));
+          NODE
+          status=$?
+          echo '' >> /tmp/phase42-report/test.log
+          echo '--- API SERVER LOG ---' >> /tmp/phase42-report/test.log
+          cat /tmp/phase42-api.log >> /tmp/phase42-report/test.log 2>&1 || true
+          cat /tmp/phase42-report/test.log
+          exit $status
+      - name: Upload Phase 4.2 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase42-processing-packaging-report
+          path: /tmp/phase42-report/test.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce Phase 4.2 result
+        if: steps.phase42_test.outcome != 'success'
+        run: exit 1
+      - name: Commit verified source patches
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && steps.phase42_test.outcome == 'success'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/server.js apps/api/src/phase4-processing-packaging.js apps/api/package.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Apply verified Phase 4.2 processing integrity patches'
+            git push origin HEAD:phase4-processing-packaging
+          fi
+      - name: Stop API
+        if: always()
+        run: kill $(cat /tmp/phase42-api.pid) || true
