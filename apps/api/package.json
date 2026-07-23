@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/phase2.js && node --check src/phase2-documents.js && node --check src/phase3-cloud-core.js && node --check src/run-phase2-migration.js && node --check src/phase4-processing-packaging.js",
+    "check": "node --check src/server.js && node --check src/phase2.js && node --check src/phase2-documents.js && node --check src/phase3-cloud-core.js && node --check src/run-phase2-migration.js && node --check src/phase4-processing-packaging.js && node --check src/phase4-export-logistics.js",
     "migrate:phase2": "node src/run-phase2-migration.js"
   },
   "dependencies": {
