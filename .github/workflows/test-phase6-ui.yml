@@ -1,0 +1,43 @@
+name: Test Phase 6 operations UI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'scripts/patch-phase6-operations-ui.cjs'
+      - 'tests/phase6-operations-ui-smoke.mjs'
+      - '.github/workflows/test-phase6-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Phase 6 sources
+        run: |
+          node --check apps/web/phase6-operations-ui.js
+          node --check scripts/patch-phase6-operations-ui.cjs
+          node --check apps/web/build-scripts/patch-phase6-operations-ui.cjs
+      - name: Build complete web
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          npm run build
+          grep -q 'SG_PHASE6_OPERATIONS_UI_START' dist/index.html
+          grep -q 'SG_PHASE6_OPERATIONS_LOADER' dist/index.html
+      - name: Test decompressed Phase 6 runtime
+        run: |
+          npm install --no-save --ignore-scripts jsdom@26
+          node tests/phase6-operations-ui-smoke.mjs
+      - name: Build Railway Docker image
+        run: docker build -t sistemi-genit-phase6 ./apps/web
+      - name: Test Docker health and marker
+        run: |
+          docker run -d --name genit-phase6 -p 4173:4173 sistemi-genit-phase6
+          for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:4173/healthz >/dev/null && break; sleep 1; done
+          curl --fail --silent http://127.0.0.1:4173/ | grep -q 'SG_PHASE6_OPERATIONS_UI_START'
