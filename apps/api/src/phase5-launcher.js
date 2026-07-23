@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { installPhase5FinanceRoutes, migratePhase5Finance } from './phase5-finance.js';
+import { installPhase6AssetDisposalRoute } from './phase6-asset-disposal.js';
 import { installPhase6OperationsRoutes, migratePhase6Operations } from './phase6-operations.js';
 
 const originalCreateServer = http.createServer;
@@ -108,6 +109,7 @@ await pool.query(`
   FOR EACH ROW EXECUTE FUNCTION sg_sync_business_document_payment_fields();
 `);
 installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase6AssetDisposalRoute({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant });
 installPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
