@@ -7,7 +7,7 @@ function assert(condition, message) {
 
 const dom = new JSDOM(`<!doctype html><html><body>
   <div id="content"><section id="source-document"><input id="unsaved-note" value="Vlerë e paruajtur"><button id="source-action">Veprim</button></section></div>
-  <div id="modal-overlay" class="show"><div id="modal-box"><div id="source-row"><label>Llogaria Bankë</label><input id="source-bank" value="Banka e Re"><input id="source-quantity" value="17"></div></div></div>
+  <div id="modal-overlay" class="show"><div id="modal-box"><div id="source-row" class="form-group"><label>Llogaria Bankë</label><input id="source-bank" value="Banka e Re"><input id="source-quantity" value="17"></div></div></div>
   <div id="search-results"></div>
 </body></html>`, { url: 'https://sistemi-genit.test', runScripts: 'outside-only', pretendToBeVisual: true });
 
