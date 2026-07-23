@@ -76,4 +76,11 @@ window.document.getElementById('source-action').click();
 assert(sourceClicks === 1, 'Event listener-i i dokumentit humbi gjatë quick-create.');
 assert(toastMessage.includes('PostgreSQL') && toastMessage.includes('Shofer i ri'), 'Mesazhi i suksesit është i pasaktë.');
 
-console.log(JSON.stringify({ ok:true, sameDocumentNode:true, sameRowNode:true, unsavedValuesPreserved:true, listenersPreserved:true, selectedAutomatically:true }, null, 2));
+restoredInput.value = 'Shofer ekzistues';
+assert(window.App.beginQuickCreate(restoredInput, definition) === true, 'Quick-create për anulim nuk filloi.');
+window.App.openGenericMasterQuickCreate('driver', 'DRIVER', 'Shofer', 'Nuk do të ruhet');
+assert(window.App.cancelQuickCreate() === true, 'Anulimi i quick-create dështoi.');
+assert(window.document.getElementById('source-driver') === restoredInput, 'Fusha burim ndryshoi pas anulimit.');
+assert(restoredInput.value === 'Shofer ekzistues', 'Anulimi ndryshoi vlerën ekzistuese të dokumentit.');
+
+console.log(JSON.stringify({ ok:true, sameDocumentNode:true, sameRowNode:true, unsavedValuesPreserved:true, listenersPreserved:true, selectedAutomatically:true, cancelRestoresSource:true }, null, 2));
