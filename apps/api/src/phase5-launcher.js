@@ -10,19 +10,28 @@ import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDoss
 import { installPhase62TraceabilityHotfixRoutes, migratePhase62TraceabilityHotfix } from './phase62-traceability-hotfix.js';
 import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
 
-function normalizeTraceabilityRowLock(sql) {
+function normalizeTraceabilitySql(sql) {
   if (typeof sql !== 'string') return sql;
-  if (!/FROM\s+weight_tickets\s+wt/i.test(sql) || !/LEFT\s+JOIN/i.test(sql) || /FOR\s+UPDATE\s+OF\s+wt/i.test(sql)) return sql;
-  return sql.replace(/FOR\s+UPDATE\s*$/i, 'FOR UPDATE OF wt');
+  let normalized = sql;
+  if (/INSERT\s+INTO\s+cloud_change_events/i.test(normalized) && /'UPSERT'/i.test(normalized)) {
+    normalized = normalized.replace(/'UPSERT'/gi, "'UPDATE'");
+  }
+  if (/FROM\s+trace_lots\s+l/i.test(normalized) && /bp\.name\s+AS\s+supplier_name\s*,\s*bp\.nipt\s+AS\s+supplier_nipt/i.test(normalized) && !/bp\.code\s+AS\s+supplier_code/i.test(normalized)) {
+    normalized = normalized.replace(/bp\.name\s+AS\s+supplier_name\s*,\s*bp\.nipt\s+AS\s+supplier_nipt/i, 'bp.code AS supplier_code,bp.name AS supplier_name,bp.nipt AS supplier_nipt');
+  }
+  if (/FROM\s+weight_tickets\s+wt/i.test(normalized) && /LEFT\s+JOIN/i.test(normalized) && !/FOR\s+UPDATE\s+OF\s+wt/i.test(normalized)) {
+    normalized = normalized.replace(/FOR\s+UPDATE\s*$/i, 'FOR UPDATE OF wt');
+  }
+  return normalized;
 }
 const originalPgQuery = pg.Client.prototype.query;
-if (!originalPgQuery.__sgTraceabilityLockFix) {
+if (!originalPgQuery.__sgTraceabilitySqlFix) {
   const patchedPgQuery = function patchedPgQuery(config, ...args) {
-    if (typeof config === 'string') config = normalizeTraceabilityRowLock(config);
-    else if (config && typeof config === 'object' && typeof config.text === 'string') config = { ...config, text: normalizeTraceabilityRowLock(config.text) };
+    if (typeof config === 'string') config = normalizeTraceabilitySql(config);
+    else if (config && typeof config === 'object' && typeof config.text === 'string') config = { ...config, text: normalizeTraceabilitySql(config.text) };
     return originalPgQuery.call(this, config, ...args);
   };
-  patchedPgQuery.__sgTraceabilityLockFix = true;
+  patchedPgQuery.__sgTraceabilitySqlFix = true;
   pg.Client.prototype.query = patchedPgQuery;
 }
 
