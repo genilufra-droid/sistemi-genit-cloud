@@ -12,6 +12,7 @@ on:
       - 'scripts/patch-global-create-cta.cjs'
       - 'scripts/patch-cloud-context-stability.cjs'
       - 'scripts/patch-quick-create-cloud.cjs'
+      - 'scripts/patch-phase42-ui-smoke.cjs'
       - 'tests/phase42-processing-ui-smoke.cjs'
       - '.github/workflows/test-phase42-processing-ui.yml'
   pull_request:
@@ -31,6 +32,7 @@ jobs:
           fetch-depth: 0
       - name: Validate and build Phase 4.2 UI
         run: |
+          node scripts/patch-phase42-ui-smoke.cjs
           node --check apps/web/phase4-processing-packaging-ui.js
           node --check apps/web/global-create-cta.js
           node --check tests/phase42-processing-ui-smoke.cjs
@@ -38,6 +40,7 @@ jobs:
           node --check scripts/patch-global-create-cta.cjs
           node --check scripts/patch-cloud-context-stability.cjs
           node --check scripts/patch-quick-create-cloud.cjs
+          node --check scripts/patch-phase42-ui-smoke.cjs
           cd apps/web
           npm ci --workspaces=false
           VITE_API_URL=http://127.0.0.1:3100 GENIT_CLOUD_REQUIRED=true npm run build
