@@ -59,7 +59,7 @@ jobs:
           cat /tmp/phase62-api.log
           exit 1
 
-      - name: Run dossier, lot label and audit scenario
+      - name: Run dossier, line-level weight, 58mm label and audit scenario
         run: |
           node <<'NODE'
           const base='http://127.0.0.1:3000';
@@ -99,9 +99,19 @@ jobs:
           const plant=await request('/api/trace/workflow/plants',{method:'POST',headers:auth,body:JSON.stringify({
             companyId:company.id,farmId:farm.id,productId:product.id,code:'BIM-FERRE',name:'Ferrë',botanicalName:'Rubus fruticosus',localName:'Ferrë',plantPart:'Frut',organicStatus:'Në konvertim',certificateNo:'BIO-264',harvestSeason:'Korrik',notes:'',active:true
           })});
+          const registry=await request('/api/trace/workflow/registry',{headers:auth});
+          if(!registry.farms.some(row=>row.id===farm.id)||!registry.plants.some(row=>row.id===plant.id))throw new Error('Ferma/Bima nuk u shfaq në regjistër.');
           const weight=await request('/api/trace/weights',{method:'POST',headers:auth,body:JSON.stringify({
             companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:product.id,documentDate:'2026-07-23',bagsCount:36,grossWeight:500,packagingWeight:50,discountPercent:0,unitPrice:100,vehiclePlate:'AA 264 TR',farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-23',qualityStatus:'QUARANTINE',notes:'Pranim prove'
           })});
+          const savedLines=await request(`/api/trace/workflow/weights/${weight.id}/lines`,{method:'PUT',headers:auth,body:JSON.stringify({lines:[
+            {packagingCount:12,grossKg:170,packagingKg:17,note:'Peshimi 1'},
+            {packagingCount:12,grossKg:165,packagingKg:16.5,note:'Peshimi 2'},
+            {packagingCount:12,grossKg:165,packagingKg:16.5,note:'Peshimi 3'}
+          ]})});
+          if(savedLines.lineCount!==3||Number(savedLines.packagingCount)!==36||Number(savedLines.grossKg)!==500||Number(savedLines.packagingKg)!==50||Number(savedLines.netKg)!==450)throw new Error(`Rreshtat e peshimit gabim: ${JSON.stringify(savedLines)}`);
+          const weightDetails=await request(`/api/trace/workflow/weights/${weight.id}/details`,{headers:auth});
+          if(weightDetails.lines.length!==3||Number(weightDetails.weight.accepted_weight)!==450)throw new Error('Formulari nuk ruajti rreshtat realë dhe totalin neto.');
           const dossier=await request(`/api/trace/workflow/weights/${weight.id}/open-dossier`,{method:'POST',headers:auth,body:JSON.stringify({farmId:farm.id,parcelId:parcel.id,plantId:plant.id,packagingUnit:'thasë'})});
           const qc=await request(`/api/trace/workflow/weights/${weight.id}/quality`,{method:'POST',headers:auth,body:JSON.stringify({result:'APPROVED',moisturePercent:8,impurityPercent:1,laboratoryReference:'LAB-264',notes:'Aprovuar'})});
           if(qc.dossierStatus!=='QUALITY_APPROVED')throw new Error(`QC status gabim: ${JSON.stringify(qc)}`);
@@ -115,6 +125,9 @@ jobs:
           const dossiers=await request('/api/trace/workflow/dossiers',{headers:auth});
           const found=dossiers.find(row=>row.id===dossier.id);
           if(!found||found.status!=='RECEIVED'||found.lot_number!==expectedLot)throw new Error(`Regjistri i dosjeve nuk u përditësua: ${JSON.stringify(found)}`);
+          const dossierDetail=await request(`/api/trace/workflow/dossiers/${dossier.id}`,{headers:auth});
+          const timelineTypes=dossierDetail.timeline.map(item=>item.documentType);
+          for(const required of ['WEIGHT_FORM','INTAKE_QUALITY','PURCHASE_INVOICE','PURCHASE_RECEIPT','LOT_LABEL'])if(!timelineTypes.includes(required))throw new Error(`Timeline mungon ${required}: ${timelineTypes.join(',')}`);
 
           await request('/api/audit/client-event',{method:'POST',headers:auth,body:JSON.stringify({
             action:'PDF',companyId:company.id,entityType:'trace_dossier',entityId:dossier.id,documentNo:dossier.dossier_no,sourceView:'traceDossiers',metadata:{format:'merged dossier PDF'}
@@ -135,7 +148,7 @@ jobs:
           for(let i=1;i<ordered.length;i++){
             if(ordered[i].previous_hash!==ordered[i-1].event_hash)throw new Error(`Zinxhiri hash u këput te event ${ordered[i].id}`);
           }
-          console.log(JSON.stringify({supplier:supplier.code,weight:weight.document_no,dossier:dossier.dossier_no,invoice:invoice.documentNo,receipt:receipt.receipt.documentNo,lot:receipt.lot.lotNumber,label:receipt.lot.label,auditEvents:events.length,deviceId:events[0].device_id},null,2));
+          console.log(JSON.stringify({supplier:supplier.code,weight:weight.document_no,weightLines:weightDetails.lines.length,dossier:dossier.dossier_no,invoice:invoice.documentNo,receipt:receipt.receipt.documentNo,lot:receipt.lot.lotNumber,label:receipt.lot.label,auditEvents:events.length,deviceId:events[0].device_id},null,2));
           NODE
 
       - name: Verify audit history is immutable
@@ -151,11 +164,17 @@ jobs:
           fi
           echo "$OUTPUT" | grep -q 'System action events are immutable'
 
-      - name: Build web with device audit markers
+      - name: Build web with workflow, 58mm label and device audit markers
         run: |
           cd apps/web
           npm ci --workspaces=false
           npm run build
+          grep -q 'SG_PHASE62_TRACEABILITY_WORKFLOW_UI_START' dist/index.html
+          grep -q 'Dosja e Gjurmueshmërisë' dist/index.html
+          grep -q 'Nr. Ambalazheve' dist/index.html
+          grep -q 'SG_PHASE62_LOT_LABEL_58MM_UI_START' dist/index.html
+          grep -q 'PESHË NETO' dist/index.html
+          grep -q 'format:\[58,72\]' dist/index.html
           grep -q 'SG_PHASE62_AUDIT_DEVICE_UI_START' dist/index.html
           grep -q 'X-SG-Device-ID' dist/index.html
           grep -q '/api/audit/client-event' dist/index.html
