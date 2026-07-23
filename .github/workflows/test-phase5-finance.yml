@@ -1,0 +1,83 @@
+name: Test Phase 5 finance
+
+on:
+  push:
+    branches: [phase5-cash-bank-cloud]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/phase5-finance-ui.*'
+      - 'scripts/patch-phase5-finance-ui.cjs'
+      - 'tests/phase5-finance.cjs'
+      - '.github/workflows/test-phase5-finance.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_phase5_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_phase5_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_phase5_test
+      JWT_SECRET: phase5-finance-test-secret-2026-minimum-32-characters
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate API and UI source
+        run: |
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+          cd ../..
+          node --check apps/web/phase5-finance-ui.js
+          node --check scripts/patch-phase5-finance-ui.cjs
+          node --check tests/phase5-finance.cjs
+      - name: Build web with Phase 5
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          VITE_API_URL=http://127.0.0.1:3000 GENIT_CLOUD_REQUIRED=true npm run build
+          grep -q 'SG_PHASE5_FINANCE_UI_START' dist/index.html
+          grep -q 'Paneli Financiar' dist/index.html
+          grep -q 'Mandat Arkëtimi' dist/index.html
+          grep -q 'Posta e Bankës' dist/index.html
+          grep -q 'Mbyllja Ditore' dist/index.html
+      - name: Start API
+        run: |
+          cd apps/api
+          npm start > /tmp/phase5-api.log 2>&1 &
+          echo $! > /tmp/phase5-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase5-api.log
+          exit 1
+      - name: Verify cash and bank lifecycle
+        run: TEST_API_URL=http://127.0.0.1:3000 node tests/phase5-finance.cjs
+      - name: Show API log
+        if: always()
+        run: cat /tmp/phase5-api.log || true
+      - name: Stop API
+        if: always()
+        run: test -f /tmp/phase5-api.pid && kill $(cat /tmp/phase5-api.pid) || true
