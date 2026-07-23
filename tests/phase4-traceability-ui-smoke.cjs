@@ -56,6 +56,7 @@ const api=http.createServer(async(req,res)=>{
   await page.goto(process.env.TEST_URL||'http://127.0.0.1:4173',{waitUntil:'domcontentloaded',timeout:60000});
   await page.waitForSelector('#app-shell',{state:'visible',timeout:30000});
   await page.waitForFunction(()=>Boolean(window.SGPhase4&&window.CloudERP&&window.App));
+  await page.waitForFunction(()=>App.currentView==='dashboard'&&App.company&&App.company.name==='Kompania Test',null,{timeout:30000});
   await page.evaluate(()=>App.navigate('weightList'));
   await page.waitForSelector(`button[onclick*="${ids.weight}"]`,{timeout:30000});
   await page.evaluate(id=>App._viewWeightForm(id),ids.weight);
