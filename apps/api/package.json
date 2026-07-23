@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/phase5-launcher.js",
     "dev": "node --watch src/phase5-launcher.js",
-    "check": "node --check src/server.js && node --check src/phase2.js && node --check src/phase2-documents.js && node --check src/phase3-cloud-core.js && node --check src/run-phase2-migration.js && node --check src/phase4-processing-packaging.js && node --check src/phase4-export-logistics.js && node --check src/phase5-finance.js && node --check src/phase5-launcher.js && node --check src/phase4-export-extensions.js && node --check src/phase6-operations.js",
+    "check": "node --check src/server.js && node --check src/phase2.js && node --check src/phase2-documents.js && node --check src/phase3-cloud-core.js && node --check src/run-phase2-migration.js && node --check src/phase4-processing-packaging.js && node --check src/phase4-export-logistics.js && node --check src/phase5-finance.js && node --check src/phase5-launcher.js && node --check src/phase4-export-extensions.js && node --check src/phase6-operations.js && node --check src/phase6-asset-disposal.js",
     "migrate:phase2": "node src/run-phase2-migration.js"
   },
   "dependencies": {
