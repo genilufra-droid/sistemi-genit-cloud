@@ -171,7 +171,8 @@
   App.exportFinanceReportExcel=function(){excel('Raporti_Arka_Banka',['Data','Hyrje','Dalje','Neto'],reportRows());};
 
   var originalRefresh=App.refreshAll;
-  App.refreshAll=async function(){var result=await originalRefresh.apply(this,arguments);try{await loadFinance(false);}catch(_){}return result;};
+  function isFinanceView(view){return['financeDashboard','financeAccounts','cashReceipts','cashPayments','bankPosts','financeJournal','cashClosings','financeReports'].indexOf(view)>=0;}
+  App.refreshAll=async function(){var result=await originalRefresh.apply(this,arguments);if(isFinanceView(this.currentView)){try{await loadFinance(false);}catch(_){}}return result;};
   installMenu();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installMenu);else setTimeout(installMenu,0);
   global.SGPhase5Finance={load:loadFinance};

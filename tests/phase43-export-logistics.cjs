@@ -34,7 +34,7 @@ async function main(){
   let reservationBlocked=false;try{await request(`/api/export/shipments/${competitor.id}/plan`,{method:'POST',headers:auth,body:'{}'});}catch(error){reservationBlocked=error.status===409;}
   if(!reservationBlocked)throw new Error('Rezervimi konkurrues i të njëjtit lot nuk u bllokua.');
   await request(`/api/export/shipments/${shipment.id}/start-loading`,{method:'POST',headers:auth,body:'{}'});
-  await request(`/api/export/shipments/${shipment.id}/seal`,{method:'POST',headers:auth,body:JSON.stringify({sealNo:'SEAL-043',containerNo:'CONT-043',cmrNo:'CMR-043'})});
+  await request(`/api/export/shipments/${shipment.id}/seal`,{method:'POST',headers:auth,body:JSON.stringify({sealNo:'SEAL-043',containerNo:'CONT-043',cmrNo:'CMR-043',packingListNo:'PL-043',commercialInvoiceNo:'CI-043',customsDeclarationNo:'DOG-043'})});
   const dispatched=await request(`/api/export/shipments/${shipment.id}/dispatch`,{method:'POST',headers:auth,body:'{}'});
   if(dispatched.status!=='DISPATCHED'||dispatched.delivery.documentNo!=='FD-2026-000001')throw new Error(`Nisja/Fletë-Dalja gabim: ${JSON.stringify(dispatched)}`);
   let duplicateDispatchBlocked=false;try{await request(`/api/export/shipments/${shipment.id}/dispatch`,{method:'POST',headers:auth,body:'{}'});}catch(error){duplicateDispatchBlocked=error.status===409;}

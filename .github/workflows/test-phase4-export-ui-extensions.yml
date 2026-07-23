@@ -1,0 +1,51 @@
+name: Test Phase 4 export UI extensions
+
+on:
+  push:
+    branches: [phase4-export-shipments-final]
+    paths:
+      - 'apps/web/**'
+      - 'scripts/patch-phase4-export-extensions-ui.cjs'
+      - '.github/workflows/test-phase4-export-ui-extensions.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Validate extension source
+        run: |
+          node --check apps/web/phase4-export-extensions-ui.js
+          node --check scripts/patch-phase4-export-extensions-ui.cjs
+      - name: Build exact ERP HTML
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          npm run build
+      - name: Verify export UI contract
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('apps/web/dist/index.html','utf8');
+          const count=(needle)=>(html.match(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'))||[]).length;
+          const required=[
+            'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
+            'Commercial Invoice janë të detyrueshme',
+            'openExportTimeline',
+            'openExportDocuments',
+            '15 raporte operative',
+            '/api/export/reports/catalog',
+            'shipment-register',
+            'exportCurrentExportReportPDF',
+            'exportCurrentExportReportExcel'
+          ];
+          for(const marker of required){if(!html.includes(marker))throw new Error(`Mungon marker-i ${marker}`);}
+          if(count('SG_PHASE43_EXPORT_EXTENSIONS_UI_START')!==1)throw new Error('Extension UI është injektuar më shumë se një herë.');
+          if(count('SG_PHASE43_EXPORT_LOGISTICS_UI_START')!==1)throw new Error('UI bazë e eksportit nuk është unike.');
+          console.log(JSON.stringify({result:'TEST_SUCCESS',extensionMarkers:required.length,dynamicReportCatalog:true,uniqueInjection:true},null,2));
+          NODE

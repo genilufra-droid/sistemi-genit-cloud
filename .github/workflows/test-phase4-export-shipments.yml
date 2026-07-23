@@ -1,0 +1,143 @@
+name: Test Phase 4 export shipments
+
+on:
+  push:
+    branches: [phase4-export-shipments]
+    paths:
+      - 'apps/api/**'
+      - 'scripts/patch-phase4-export-extensions.py'
+      - '.github/workflows/test-phase4-export-shipments.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export-shipments:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_export_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_export_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_export_test
+      JWT_SECRET: phase4-export-test-secret-2026-minimum-32-characters
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Apply patch and validate source
+        run: |
+          python3 scripts/patch-phase4-export-extensions.py
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+      - name: Start API
+        run: |
+          cd apps/api
+          node src/server.js > /tmp/export-api.log 2>&1 &
+          echo $! > /tmp/export-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/export-api.log
+          exit 1
+      - name: Verify packaged lot to closed export shipment
+        id: export_test
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/export-report
+          cd apps/api
+          node <<'NODE' > /tmp/export-report/test.log 2>&1
+          import pg from 'pg';
+          import { randomUUID } from 'node:crypto';
+          const {Pool}=pg;
+          const base='http://127.0.0.1:3000';
+          async function request(path,options={}){
+            const response=await fetch(base+path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+            const raw=await response.text();let body;try{body=JSON.parse(raw)}catch{body={text:raw}};
+            if(!response.ok){const error=new Error(`${response.status} ${path}: ${body.message||raw}`);error.status=response.status;error.body=body;throw error;}
+            return body;
+          }
+          const setup=await request('/api/setup/admin',{method:'POST',body:JSON.stringify({organizationName:'Genit Export',companyName:'Genit Herbs Export',companyNipt:'L50000000E',warehouseName:'Magazina Eksport',adminName:'Administrator Eksporti',username:'admin_export',email:'export@genit.test',password:'AdminExport123'})});
+          const auth={Authorization:`Bearer ${setup.token}`};
+          const boot=await request('/api/cloud/bootstrap',{headers:auth});
+          const company=boot.companies[0],warehouse=boot.warehouses[0],user=boot.user;
+          const product=await request('/api/products',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'GJF-PKG',name:'Gjethe Ferre Paketë 500g',baseUnit:'kg',packUnit:'pako',palletUnit:'paletë',packCoefficient:0.5,palletCoefficient:50,purchasePrice:0,salePrice:300,vatRate:0,active:true})});
+          const customer=await request('/api/partners',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,partnerType:'CUSTOMER',code:'EXP-001',name:'Herbs Europe GmbH',nipt:'DE123456789',address:'Berlin',city:'Berlin',phone:'',email:'buyer@example.eu',creditLimit:100000,active:true})});
+          const vehicle=await request('/api/logistics/vehicles',{method:'POST',headers:auth,body:JSON.stringify({companyId:company.id,code:'TR-001',plateNo:'AA500TR',vehicleType:'Kamion frigoriferik',make:'Mercedes',model:'Actros',year:2024,capacityKg:1000,odometerKm:120000,fuelType:'Diesel',fuelNormL100Km:28,ownershipType:'OWNED',chassisNo:'WDBTEST500',registrationExpiry:'2027-07-23',insuranceExpiry:'2027-07-23',technicalInspectionExpiry:'2027-07-23',active:true,notes:'Kamion eksporti'})});
+          const pool=new Pool({connectionString:process.env.DATABASE_URL});
+          const lotId=randomUUID();
+          await pool.query(`INSERT INTO trace_lots(id,tenant_id,company_id,warehouse_id,product_id,lot_number,lot_type,status,quality_status,production_date,expiry_date,quantity_created,quantity_available,quantity_consumed,base_unit,unit_cost,notes,created_by)
+            VALUES($1,$2,$3,$4,$5,'PKG-GJF-20260723-0001','PACKAGED','AVAILABLE','APPROVED','2026-07-23','2028-07-23',78,78,0,'kg',150,'Lot test eksporti',$6)`,[lotId,user.tenantId||user.tenant_id,company.id,warehouse.id,product.id,user.id]);
+          await pool.query(`INSERT INTO stock_movements(id,tenant_id,company_id,warehouse_id,product_id,movement_type,quantity_base,unit_cost,reference_type,reference_id,reference_no,created_by)
+            VALUES($1,$2,$3,$4,$5,'PACKAGING_ORDER',78,150,'PACKAGING_ORDER',$6,'PAK-2026-000001',$7)`,[randomUUID(),user.tenantId||user.tenant_id,company.id,warehouse.id,product.id,randomUUID(),user.id]);
+          await pool.end();
+
+          const payload={companyId:company.id,warehouseId:warehouse.id,customerId:customer.id,vehicleId:vehicle.id,salesDocumentId:null,shipmentDate:'2026-07-23',plannedDepartureAt:'2026-07-24T08:00:00+02:00',driverName:'Arben Testi',driverPhone:'+355690000001',carrierName:'Genit Transport',trailerPlate:'AB500TR',containerNo:'CONT-500',sealNo:'',origin:'Lushnjë, Shqipëri',destination:'Berlin, Gjermani',destinationCountry:'Gjermani',borderPoint:'Kapshticë',routeText:'Lushnjë → Kapshticë → Selanik → Berlin',incoterm:'DAP',distanceKm:1800,grossWeight:55,palletCount:2,packageCount:100,cmrNo:'',packingListNo:'',customsDeclarationNo:'',freightCost:1000,customsCost:500,otherCost:100,notes:'Ngarkesë prove',items:[{lotId,quantity:50,packageCount:100,palletCount:2,palletReference:'PAL-001',grossWeight:55,unitPrice:300}]};
+          const shipment=await request('/api/export/shipments',{method:'POST',headers:auth,body:JSON.stringify(payload)});
+          if(shipment.status!=='DRAFT'||shipment.shipment_no!=='NG-2026-000001')throw new Error(`Drafti i ngarkesës gabim: ${JSON.stringify(shipment)}`);
+          let earlyDispatchBlocked=false;try{await request(`/api/export/shipments/${shipment.id}/dispatch`,{method:'POST',headers:auth,body:'{}'});}catch(error){earlyDispatchBlocked=error.status===409;}
+          if(!earlyDispatchBlocked)throw new Error('Nisja para vulosjes nuk u bllokua.');
+          await request(`/api/export/shipments/${shipment.id}/plan`,{method:'POST',headers:auth,body:'{}'});
+
+          const second=await request('/api/export/shipments',{method:'POST',headers:auth,body:JSON.stringify({...payload,driverName:'Shoferi Dyte',items:[{...payload.items[0],quantity:40,packageCount:80}]})});
+          let reservationBlocked=false;try{await request(`/api/export/shipments/${second.id}/plan`,{method:'POST',headers:auth,body:'{}'});}catch(error){reservationBlocked=error.status===409;}
+          if(!reservationBlocked)throw new Error('Rezervimi mbi gjendjen e lirë nuk u bllokua.');
+          await request(`/api/export/shipments/${second.id}/cancel`,{method:'POST',headers:auth,body:'{}'});
+
+          await request(`/api/export/shipments/${shipment.id}/start-loading`,{method:'POST',headers:auth,body:'{}'});
+          let incompleteSealBlocked=false;try{await request(`/api/export/shipments/${shipment.id}/seal`,{method:'POST',headers:auth,body:JSON.stringify({sealNo:'SEAL-500',containerNo:'CONT-500',cmrNo:''})});}catch(error){incompleteSealBlocked=error.status===400;}
+          if(!incompleteSealBlocked)throw new Error('Vulosja pa dokumentet e eksportit nuk u bllokua.');
+          await request(`/api/export/shipments/${shipment.id}/seal`,{method:'POST',headers:auth,body:JSON.stringify({sealNo:'SEAL-500',containerNo:'CONT-500',cmrNo:'CMR-500',packingListNo:'PL-500',commercialInvoiceNo:'CI-500',customsDeclarationNo:'DOG-500'})});
+          await request(`/api/export/shipments/${shipment.id}/documents`,{method:'POST',headers:auth,body:JSON.stringify({documentType:'PHYTOSANITARY',documentNo:'PHYTO-500',documentDate:'2026-07-23',templateKey:'export-phytosanitary-v1',filename:'PHYTO-500.pdf',storageUrl:'',snapshot:{shipmentNo:shipment.shipment_no,lotNumber:'PKG-GJF-20260723-0001'},notes:'Snapshot i dokumentit'})});
+          const dispatched=await request(`/api/export/shipments/${shipment.id}/dispatch`,{method:'POST',headers:auth,body:'{}'});
+          if(dispatched.status!=='DISPATCHED'||!dispatched.delivery?.documentNo?.startsWith('FD-2026-'))throw new Error(`Nisja/Fletë-Dalja gabim: ${JSON.stringify(dispatched)}`);
+          let duplicateDispatchBlocked=false;try{await request(`/api/export/shipments/${shipment.id}/dispatch`,{method:'POST',headers:auth,body:'{}'});}catch(error){duplicateDispatchBlocked=error.status===409;}
+          if(!duplicateDispatchBlocked)throw new Error('Nisja e dyfishtë nuk u bllokua.');
+          const lots=await request('/api/trace/lots',{headers:auth});const lot=lots.find(x=>x.id===lotId);if(Number(lot.quantity_available)!==28)throw new Error(`Gjendja e lotit pas nisjes është ${lot.quantity_available}, jo 28.`);
+          const stock=await request('/api/stock',{headers:auth});const stockRow=stock.find(x=>x.product_id===product.id&&x.warehouse_id===warehouse.id);if(Number(stockRow.quantity_base)!==28)throw new Error(`Stoku pas nisjes është ${stockRow.quantity_base}, jo 28.`);
+          await request(`/api/export/shipments/${shipment.id}/at-border`,{method:'POST',headers:auth,body:'{}'});
+          await request(`/api/export/shipments/${shipment.id}/deliver`,{method:'POST',headers:auth,body:JSON.stringify({deliveryProofRef:'POD-500',deliveredAt:'2026-07-26T10:00:00+02:00'})});
+          await request(`/api/export/shipments/${shipment.id}/close`,{method:'POST',headers:auth,body:'{}'});
+          const detail=await request(`/api/export/shipments/${shipment.id}`,{headers:auth});if(detail.status!=='CLOSED'||detail.commercial_invoice_no!=='CI-500'||detail.packing_list_no!=='PL-500')throw new Error('Detaji final i ngarkesës nuk është i plotë.');
+          const timeline=await request(`/api/export/shipments/${shipment.id}/timeline`,{headers:auth});if(timeline.events.length<8)throw new Error(`Timeline ka vetëm ${timeline.events.length} veprime.`);
+          const docs=await request(`/api/export/shipments/${shipment.id}/documents`,{headers:auth});if(docs.length!==1||docs[0].document_type!=='PHYTOSANITARY')throw new Error('Regjistri i dokumenteve është gabim.');
+          const catalog=await request('/api/export/reports/catalog',{headers:auth});if(catalog.length!==15)throw new Error(`Katalogu ka ${catalog.length} raporte, jo 15.`);
+          const reportCounts={};for(const report of catalog){const rows=await request(`/api/export/reports/${report.code}?from=2026-07-01&to=2026-07-31`,{headers:auth});reportCounts[report.code]=rows.length;}
+          const documents=await request('/api/export/reports/documents?from=2026-07-01&to=2026-07-31',{headers:auth});const docRow=documents.find(x=>x.shipment_no===shipment.shipment_no);if(!docRow?.complete)throw new Error(`Raporti i dokumenteve nuk është komplet: ${JSON.stringify(docRow)}`);
+          const profitability=await request('/api/export/reports/profitability?from=2026-07-01&to=2026-07-31',{headers:auth});const profitRow=profitability.find(x=>x.shipment_no===shipment.shipment_no);if(Number(profitRow?.profit)!==5900)throw new Error(`Fitimi i ngarkesës është ${profitRow?.profit}, jo 5900.`);
+          console.log(JSON.stringify({result:'TEST_SUCCESS',shipmentNo:shipment.shipment_no,status:'CLOSED',deliveryNo:dispatched.delivery.documentNo,lotAvailable:28,stockAvailable:28,reports:catalog.length,profit:5900,earlyDispatchBlocked,reservationBlocked,incompleteSealBlocked,duplicateDispatchBlocked,reportCounts},null,2));
+          NODE
+          status=$?
+          echo '' >> /tmp/export-report/test.log
+          echo '--- API LOG ---' >> /tmp/export-report/test.log
+          cat /tmp/export-api.log >> /tmp/export-report/test.log || true
+          cat /tmp/export-report/test.log
+          exit $status
+      - name: Upload export report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-export-report
+          path: /tmp/export-report/test.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce export result
+        if: steps.export_test.outcome != 'success'
+        run: exit 1
+      - name: Stop API
+        if: always()
+        run: kill $(cat /tmp/export-api.pid) 2>/dev/null || true
