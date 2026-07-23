@@ -6,14 +6,21 @@ import { installPhase5FinanceRoutes, migratePhase5Finance } from './phase5-finan
 
 const originalCreateServer = http.createServer;
 let capturedApp = null;
+let pendingListen = null;
 http.createServer = function captureApp(app, ...args) {
   capturedApp = app;
-  return originalCreateServer.call(this, app, ...args);
+  const server = originalCreateServer.call(this, app, ...args);
+  const originalListen = server.listen;
+  server.listen = function deferListen(...listenArgs) {
+    pendingListen = { server, originalListen, listenArgs };
+    return server;
+  };
+  return server;
 };
 
 await import('./server.js');
 http.createServer = originalCreateServer;
-if (!capturedApp) throw new Error('Phase 5 nuk arriti të kapë Express app.');
+if (!capturedApp || !pendingListen) throw new Error('Phase 5 nuk arriti të kapë nisjen e Express API.');
 
 const { Pool } = pg;
 const pool = new Pool({
@@ -79,7 +86,7 @@ const router = capturedApp.router || capturedApp._router;
 if (!router?.stack || router.stack.length < 2) throw new Error('Express route stack nuk u gjet.');
 const terminalLayers = router.stack.splice(-2);
 await migratePhase5Finance(pool);
-installPhase5FinanceRoutes({ capturedApp, app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
@@ -95,4 +102,6 @@ if (modulesLayer?.route?.stack?.length) {
   ]);
 }
 
+pendingListen.server.listen = pendingListen.originalListen;
+pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
 console.log('Sistemi Genit Cloud Phase 5 Finance routes installed.');
