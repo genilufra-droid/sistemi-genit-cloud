@@ -28,5 +28,5 @@ if ((check.match(/SG_PHASE64_WEIGHT_VISIBLE_ACTIONS_PATCH_START/g) || []).length
 if (!check.includes('SG_PHASE64_WEIGHT_VISIBLE_ACTIONS_START')) throw new Error('Runtime-i i butonave të peshës mungon.');
 if (!check.includes('Shto Formular Peshimi') || !check.includes('Ruaj Formularin')) throw new Error('Komandat kryesore të Formularit të Peshës mungojnë.');
 if (!check.includes('SG_PHASE62_WEIGHT_DOCUMENT_UI_START')) throw new Error('Moduli ekzistues i Pamjes 58 mm mungon.');
-if (check.includes('sg64-weight-mobile-save') || check.includes('position:fixed')) throw new Error('Overlay-i mobile i paqëndrueshëm nuk duhet të jetë në build.');
+if (js.includes('sg64-weight-mobile-save') || js.includes('position:fixed') || js.includes('MutationObserver') || js.includes(':has(')) throw new Error('Patch-i i peshës përmban mekanizëm mobile të paqëndrueshëm.');
 console.log('Phase 6.4 stable native weight actions injected.');
