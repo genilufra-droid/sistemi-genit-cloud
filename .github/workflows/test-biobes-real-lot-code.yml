@@ -1,0 +1,69 @@
+name: Test BioBes real lot code
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/biobes-*'
+      - 'apps/api/test-biobes-lot-code.mjs'
+      - 'apps/api/package.json'
+      - 'apps/web/phase69-biobes-lot-ui.js'
+      - 'apps/web/build-scripts/patch-phase69-biobes-lot-ui.cjs'
+      - 'apps/web/build-self-contained.cjs'
+      - '.github/workflows/test-biobes-real-lot-code.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  biobes-lot:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --workspaces=false
+      - name: Validate BioBes JavaScript
+        working-directory: apps/api
+        run: |
+          npm run check
+          node --check test-biobes-lot-code.mjs
+          node --check ../web/phase69-biobes-lot-ui.js
+          node --check ../web/build-scripts/patch-phase69-biobes-lot-ui.cjs
+      - name: Test complete BioBes lot lifecycle
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/genit_test
+        run: node test-biobes-lot-code.mjs
+      - name: Verify web build contains BioBes fields
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: |
+          npm ci --workspaces=false
+          npm run build
+          grep -q 'SG_PHASE69_BIOBES_LOT_UI_START' dist/index.html
+          grep -q 'Periudha e vjeljes' dist/index.html
+          grep -q 'Kodi i origjinës BioBes' dist/index.html
+          grep -q '105 — Ferra' dist/index.html
