@@ -45,6 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Validate API source and Phase 5 launcher
         run: |
@@ -61,11 +62,12 @@ jobs:
           grep -q 'SG_GLOBAL_CREATE_CTA_START' dist/index.html
           grep -q '/api/finance/accounts' dist/index.html
           grep -q 'Nuk u gjet asnjë rezultat' dist/index.html
-      - name: Test live DOM preservation
-        run: |
-          npm install --no-save --ignore-scripts jsdom@26
-          node tests/global-create-cta-smoke.mjs
-          node tests/global-quick-create-dom.mjs
+      - name: Install DOM test runtime
+        run: npm install --no-save --ignore-scripts jsdom@26
+      - name: Test global create CTA DOM preservation
+        run: node tests/global-create-cta-smoke.mjs
+      - name: Test financial quick-create DOM preservation
+        run: node tests/global-quick-create-dom.mjs
       - name: Start API through Phase 5 launcher
         run: |
           cd apps/api
