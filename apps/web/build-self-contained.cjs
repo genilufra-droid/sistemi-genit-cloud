@@ -31,6 +31,7 @@ const PATCHES = [
   'patch-phase63-traceability-ui-hotfix.cjs',
   'patch-phase64-weight-visible-actions.cjs',
   'patch-phase69-biobes-lot-ui.cjs',
+  'patch-phase71-manufacturing-ui.cjs',
   'patch-phase70-navigation-registry.cjs',
 ];
 const REQUIRED_MARKERS = [
@@ -44,6 +45,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE63_TRACEABILITY_UI_HOTFIX_START',
   'SG_PHASE64_WEIGHT_VISIBLE_ACTIONS_START',
   'SG_PHASE69_BIOBES_LOT_UI_START',
+  'SG_PHASE71_MANUFACTURING_UI_START',
   'SG_PHASE70_NAVIGATION_REGISTRY_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
