@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 const targetUrl = process.env.TARGET_URL || 'https://genit-web-production.up.railway.app/?diagnostic=weight-freeze';
 const outputPath = process.env.DIAGNOSTIC_OUTPUT || '/tmp/weight-freeze-result.json';
 const screenshotPath = process.env.DIAGNOSTIC_SCREENSHOT || '/tmp/weight-freeze-diagnostic.png';
+const htmlOutputPath = process.env.DIAGNOSTIC_HTML || '/tmp/weight-freeze-page.html';
 const report = {
   targetUrl,
   startedAt: new Date().toISOString(),
@@ -64,6 +65,12 @@ try {
   await page.waitForTimeout(1500);
   await heartbeat('after-load');
 
+  const html = await page.content();
+  fs.writeFileSync(htmlOutputPath, html);
+  const observerMatches = Array.from(html.matchAll(/.{0,500}MutationObserver.{0,1200}/gs)).slice(0, 20);
+  report.mutationObserverSnippets = observerMatches.map((match) => match[0]);
+  report.htmlBytes = Buffer.byteLength(html);
+
   report.diagnostic = await page.evaluate(() => ({
     title: document.title,
     href: location.href,
@@ -99,10 +106,11 @@ try {
   report.error = error && error.stack ? error.stack : String(error);
   console.error(`[diagnostic-failed] ${report.error}`);
   await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-  process.exitCode = 1;
 } finally {
   report.finishedAt = new Date().toISOString();
   fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
   for (const line of report.messages.slice(-100)) console.log(line);
   await browser.close();
 }
+
+if (!report.success) process.exitCode = 1;
