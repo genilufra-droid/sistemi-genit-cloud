@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const root=path.resolve(__dirname,'..');
+const htmlPath=path.join(root,'apps','web','index.html');
+const jsPath=path.join(root,'apps','web','phase71-manufacturing-nav.js');
+const start='<!-- SG_PHASE71_MANUFACTURING_NAV_PATCH_START -->';
+const end='<!-- SG_PHASE71_MANUFACTURING_NAV_PATCH_END -->';
+const esc=(v)=>v.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+let html=fs.readFileSync(htmlPath,'utf8');const js=fs.readFileSync(jsPath,'utf8');new Function(js);
+html=html.replace(new RegExp(esc(start)+'[\\s\\S]*?'+esc(end)+'\\s*','g'),'');
+const close=/<\/body>\s*<\/html>\s*$/i;if(!close.test(html))throw new Error('Mungon mbyllja finale.');
+html=html.replace(close,start+'\n<script id="sg-phase71-manufacturing-nav">\n'+js+'\n</script>\n'+end+'\n</body>\n</html>');
+fs.writeFileSync(htmlPath,html);const check=fs.readFileSync(htmlPath,'utf8');
+['SG_PHASE71_MANUFACTURING_NAV_START','PRODHIMI / MANUFACTURING','Paneli i Prodhimit'].forEach((m)=>{if(!check.includes(m))throw new Error('Mungon '+m);});
+console.log('Phase 7.1 manufacturing navigation injected.');
