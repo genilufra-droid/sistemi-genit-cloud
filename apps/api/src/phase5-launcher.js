@@ -10,6 +10,8 @@ import { installPhase62TraceabilityDossierRoutes, migratePhase62TraceabilityDoss
 import { installPhase62TraceabilityHotfixRoutes, migratePhase62TraceabilityHotfix } from './phase62-traceability-hotfix.js';
 import { installPhase63TraceabilityFixes, migratePhase63TraceabilityFixes } from './phase63-traceability-fixes.js';
 import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit-trail.js';
+import { installBiobesLotCodeRoutes, migrateBiobesLotCode, rewriteShipmentLotSql } from './biobes-lot-code.js';
+import { migrateBiobesLotStageCompatibility } from './biobes-lot-stage-compat.js';
 
 pg.types.setTypeParser(1082, (value) => value);
 
@@ -28,7 +30,7 @@ function normalizeTraceabilitySql(sql) {
   if (/FROM\s+weight_tickets\s+wt/i.test(normalized) && /LEFT\s+JOIN/i.test(normalized) && !/FOR\s+UPDATE\s+OF\s+wt/i.test(normalized)) {
     normalized = normalized.replace(/FOR\s+UPDATE\s*$/i, 'FOR UPDATE OF wt');
   }
-  return normalized;
+  return rewriteShipmentLotSql(normalized);
 }
 const originalPgQuery = pg.Client.prototype.query;
 if (!originalPgQuery.__sgTraceabilitySqlFix) {
@@ -181,6 +183,8 @@ await migratePhase62TraceabilityDossier(pool);
 await migrateGlobalAuditTrail(pool);
 await migratePhase62TraceabilityHotfix(pool);
 await migratePhase63TraceabilityFixes(pool);
+await migrateBiobesLotStageCompatibility(pool);
+await migrateBiobesLotCode(pool);
 await pool.query(`
   CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
   RETURNS TRIGGER AS $$
@@ -209,6 +213,7 @@ installPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRole
 installPhase62TraceabilityHotfixRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase62TraceabilityDossierRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installPhase63TraceabilityFixes({ router, pool, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installBiobesLotCodeRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
@@ -218,12 +223,12 @@ if (modulesLayer?.route?.stack?.length) {
     { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log','Gjurmë Përdoruesi & Pajisjeje'] },
     { group:'Blerje & Peshim',phase:2,active:true,items:['Formulari i Peshave','Kërkesa për Ofertë','Porosi Blerjeje','Pranime','Fatura Blerjeje'] },
     { group:'Shitje & Magazinë',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje','Stoku'] },
-    { group:'Gjurmueshmëri 360°',phase:6.3,active:true,items:['Ferma & Origjina','Bimët','Formulari i Peshës me Origjinë Opsionale','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë 58 mm','Lote Automatike','Proces 1..N','Magazina Produkt i Gatshëm','Loti Final i Shitjes','Dosja e Dokumenteve'] },
-    { group:'Arka & Banka',phase:5,active:true,items:['Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },
-    { group:'Operacione',phase:6,active:true,items:['Shpenzime','Kategori Shpenzimesh','Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },
+    { group:'Gjurmueshmëri 360°',phase:6.9,active:true,items:['Ferma & Origjina','Katalogu me 165 kode BioBes','Periudha I/II/III','Bimët','Formulari i Peshës me Origjinë Opsionale','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë 58 mm','Lote B0/B1','Proces & Gjendje B6','Loti Final i Shitjes B2/B3','Dosja e Dokumenteve'] },
+    { group:'Arka & Banka',phase:5,active:true,items:['Shpenzime','Kategori Shpenzimesh','Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },
+    { group:'Operacione & Logjistikë',phase:6,active:true,items:['Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },
   ]);
 }
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 6.3 optional origin, registry verification, 58mm preview, device CORS and immutable audit routes installed.');
+console.log('Sistemi Genit Cloud Phase 6.9: gjurmueshmëri BioBes, kode reale artikujsh dhe lote B0/B1/B6/B2/B3 installed.');
