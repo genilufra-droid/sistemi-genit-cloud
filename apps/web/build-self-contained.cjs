@@ -33,6 +33,7 @@ const PATCHES = [
   'patch-phase69-biobes-lot-ui.cjs',
   'patch-phase70-navigation-registry.cjs',
   'patch-phase71-odoo-manufacturing-ui.cjs',
+  'patch-phase72-odoo-document-links-ui.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -47,6 +48,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE69_BIOBES_LOT_UI_START',
   'SG_PHASE70_NAVIGATION_REGISTRY_START',
   'SG_PHASE71_ODOO_MANUFACTURING_UI_START',
+  'SG_PHASE72_ODOO_DOCUMENT_LINKS_UI_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
