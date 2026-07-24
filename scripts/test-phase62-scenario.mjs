@@ -5,7 +5,7 @@ const deviceHeaders={
   'X-SG-Device-Platform':'Android 16',
   'X-SG-Device-Timezone':'Europe/Tirane',
   'X-SG-Client-Time':'2026-07-23T20:00:00.000Z',
-  'User-Agent':'SistemiGenit-Test/6.2'
+  'User-Agent':'SistemiGenit-Test/6.3'
 };
 async function request(path,options={}){
   const response=await fetch(base+path,{...options,headers:{Accept:'application/json','Content-Type':'application/json',...deviceHeaders,...(options.headers||{})}});
@@ -38,7 +38,21 @@ const plant=await request('/api/trace/workflow/plants',{method:'POST',headers:au
   companyId:company.id,farmId:farm.id,productId:product.id,code:'BIM-FERRE',name:'Ferrë',botanicalName:'Rubus fruticosus',localName:'Ferrë',plantPart:'Frut',organicStatus:'Në konvertim',certificateNo:'BIO-264',harvestSeason:'Korrik',notes:'',active:true
 })});
 const registry=await request('/api/trace/workflow/registry',{headers:auth});
-check(registry.farms.some(row=>row.id===farm.id)&&registry.plants.some(row=>row.id===plant.id),'Ferma/Bima nuk u shfaq në regjistër.');
+check(registry.farms.some(row=>row.id===farm.id),'Ferma e ruajtur nuk u shfaq në regjistër.');
+check(registry.plants.some(row=>row.id===plant.id),'Bima e ruajtur nuk u shfaq në regjistër.');
+
+const optionalWeight=await request('/api/trace/weights',{method:'POST',headers:auth,body:JSON.stringify({
+  companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:product.id,documentDate:'2026-07-24',bagsCount:5,grossWeight:258,packagingWeight:23,discountPercent:0,unitPrice:100,vehiclePlate:'',farmId:null,parcelId:null,harvestDate:'2026-07-24',qualityStatus:'QUARANTINE',notes:'Fermer pa fermë të regjistruar'
+})});
+await request(`/api/trace/workflow/weights/${optionalWeight.id}/lines`,{method:'PUT',headers:auth,body:JSON.stringify({lines:[{packagingCount:5,grossKg:258,packagingKg:23,note:''}]})});
+const optionalDossier=await request(`/api/trace/workflow/weights/${optionalWeight.id}/open-dossier`,{method:'POST',headers:auth,body:JSON.stringify({farmId:null,parcelId:null,plantId:null,packagingUnit:'thasë'})});
+const optionalList=await request('/api/trace/workflow/dossiers',{headers:auth});
+const optionalRow=optionalList.find(row=>row.id===optionalDossier.id);
+check(optionalRow,'Dosja pa Fermë/Bimë nuk u shfaq në regjistrin e dosjeve.');
+check(optionalRow.farm_id==null&&optionalRow.plant_id==null,'Ferma/Bima opsionale u ruajtën gabimisht.');
+const optionalDetail=await request(`/api/trace/workflow/dossiers/${optionalDossier.id}`,{headers:auth});
+check(optionalDetail.dossier.productName==='Ferrë'&&Number(optionalDetail.dossier.acceptedWeight)===235,'Dosja opsionale nuk ruajti artikullin ose peshën neto.');
+
 const weight=await request('/api/trace/weights',{method:'POST',headers:auth,body:JSON.stringify({
   companyId:company.id,warehouseId:warehouse.id,supplierId:supplier.id,productId:product.id,documentDate:'2026-07-23',bagsCount:36,grossWeight:500,packagingWeight:50,discountPercent:0,unitPrice:100,vehiclePlate:'AA 264 TR',farmId:farm.id,parcelId:parcel.id,harvestDate:'2026-07-23',qualityStatus:'QUARANTINE',notes:'Pranim prove'
 })});
@@ -85,4 +99,4 @@ check(events.every(e=>/^[0-9a-f]{64}$/i.test(e.event_hash)),'Hash-i i auditimit 
 const ordered=events.slice().sort((a,b)=>Number(a.sequence_no)-Number(b.sequence_no));
 for(let i=1;i<ordered.length;i++)check(ordered[i].previous_hash===ordered[i-1].event_hash,`Zinxhiri hash u këput te event ${ordered[i].id}`);
 
-console.log(JSON.stringify({supplier:supplier.code,weight:weight.document_no,weightLines:weightDetails.lines.length,dossier:dossier.dossier_no,invoice:invoice.documentNo,receipt:receipt.receipt.documentNo,lot:receipt.lot.lotNumber,label:receipt.lot.label,auditEvents:events.length,deviceId:events[0].device_id},null,2));
+console.log(JSON.stringify({supplier:supplier.code,registryFarm:farm.id,registryPlant:plant.id,optionalDossier:optionalDossier.dossier_no,optionalNet:optionalDetail.dossier.acceptedWeight,weight:weight.document_no,weightLines:weightDetails.lines.length,dossier:dossier.dossier_no,invoice:invoice.documentNo,receipt:receipt.receipt.documentNo,lot:receipt.lot.lotNumber,label:receipt.lot.label,auditEvents:events.length,deviceId:events[0].device_id},null,2));
