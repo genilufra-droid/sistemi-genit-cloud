@@ -1,0 +1,133 @@
+name: Test Phase 7.1 Odoo Manufacturing
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/phase71-manufacturing.js'
+      - 'apps/api/src/phase5-launcher.js'
+      - 'apps/api/package.json'
+      - 'apps/web/phase71-odoo-manufacturing-ui.js'
+      - 'apps/web/phase71-odoo-manufacturing-ui.css'
+      - 'apps/web/phase72-odoo-document-links-ui.js'
+      - 'apps/web/phase72-odoo-document-links-ui.css'
+      - 'apps/web/build-scripts/patch-phase71-odoo-manufacturing-ui.cjs'
+      - 'apps/web/build-scripts/patch-phase72-odoo-document-links-ui.cjs'
+      - 'apps/web/build-self-contained.cjs'
+      - '.github/workflows/test-phase71-odoo-manufacturing.yml'
+  workflow_dispatch:
+
+jobs:
+  manufacturing:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_mrp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_mrp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_mrp_test
+      JWT_SECRET: phase71-odoo-manufacturing-test-secret-2026
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Validate API source
+        run: |
+          cd apps/api
+          npm ci --workspaces=false
+          npm run check
+
+      - name: Build web with Odoo document links
+        run: |
+          cd apps/web
+          npm ci --workspaces=false
+          VITE_API_URL=http://127.0.0.1:3000 GENIT_CLOUD_REQUIRED=true npm run build
+          grep -q 'SG_PHASE71_ODOO_MANUFACTURING_UI_START' dist/index.html
+          grep -q 'SG_PHASE72_ODOO_DOCUMENT_LINKS_UI_START' dist/index.html
+          grep -q 'PRODHIMI / MANUFACTURING' dist/index.html
+          grep -q 'sg72OpenDocument' dist/index.html
+          grep -q 'sg72OpenBusinessDocument' dist/index.html
+          grep -q 'sg72OpenLotDocument' dist/index.html
+          grep -q 'sg72-smartdoc' dist/index.html
+          grep -q 'sg72-doc-link' dist/index.html
+
+      - name: Start API
+        run: |
+          cd apps/api
+          npm start >/tmp/phase71-api.log 2>&1 &
+          echo $! >/tmp/phase71-api.pid
+          for attempt in $(seq 1 90); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/phase71-api.log
+          exit 1
+
+      - name: Verify Manufacturing schema
+        run: |
+          node <<'NODE'
+          const pg=require('./apps/api/node_modules/pg');
+          (async()=>{
+            const client=new pg.Client({connectionString:process.env.DATABASE_URL});
+            await client.connect();
+            const tables=[
+              'mrp_locations','mrp_processes','mrp_work_centers','mrp_routes','mrp_route_steps',
+              'mrp_samples','mrp_sample_lines','mrp_campaigns','mrp_campaign_formula',
+              'mrp_quality_checks','mrp_stock_moves','mrp_final_lots','mrp_final_lot_lines'
+            ];
+            for(const table of tables){
+              const result=await client.query('SELECT to_regclass($1) AS name',[`public.${table}`]);
+              if(!result.rows[0].name)throw new Error(`Mungon tabela ${table}`);
+            }
+            const columns=await client.query(`SELECT column_name FROM information_schema.columns
+              WHERE table_name='process_orders' AND column_name IN(
+                'campaign_id','mrp_process_id','work_center_id','route_step_id','source_location_id',
+                'process_location_id','destination_location_id','previous_order_id','next_order_id',
+                'mrp_state','planned_quantity','actual_input_quantity','bag_count','output_lot_type',
+                'actual_start','actual_end','qc_status'
+              )`);
+            if(columns.rowCount!==17)throw new Error(`Kolonat Manufacturing: ${columns.rowCount}/17`);
+            const lotColumns=await client.query(`SELECT column_name FROM information_schema.columns
+              WHERE table_name='trace_lots' AND column_name IN('quantity_reserved','process_stage_code')`);
+            if(lotColumns.rowCount!==2)throw new Error('Kolonat e rezervimit të lotit mungojnë.');
+            await client.end();
+            console.log('PHASE71_MRP_SCHEMA_SUCCESS');
+          })().catch((error)=>{console.error(error);process.exit(1);});
+          NODE
+
+      - name: Verify protected Manufacturing routes
+        run: |
+          for path in \
+            /api/mrp/locations \
+            /api/mrp/processes \
+            /api/mrp/work-centers \
+            /api/mrp/routes \
+            /api/mrp/samples \
+            /api/mrp/campaigns \
+            /api/mrp/work-orders \
+            /api/mrp/final-lots; do
+            status=$(curl -s -o /tmp/mrp-response.json -w '%{http_code}' "http://127.0.0.1:3000${path}")
+            test "$status" = "401"
+          done
+
+      - name: Show API log
+        if: always()
+        run: cat /tmp/phase71-api.log || true
+
+      - name: Stop API
+        if: always()
+        run: test -f /tmp/phase71-api.pid && kill $(cat /tmp/phase71-api.pid) || true
