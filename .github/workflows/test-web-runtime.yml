@@ -7,6 +7,7 @@ on:
       - 'apps/web/**'
       - 'scripts/patch-*.cjs'
       - 'scripts/test-phase64-weight-buttons.mjs'
+      - 'scripts/diagnose-weight-freeze.mjs'
       - '.github/workflows/test-web-runtime.yml'
   workflow_dispatch:
 
@@ -34,6 +35,7 @@ jobs:
           node --check apps/web/phase61-professional-ui.js
           node --check apps/web/phase64-weight-visible-actions.js
           node --check scripts/test-phase64-weight-buttons.mjs
+          node --check scripts/diagnose-weight-freeze.mjs
           node --check scripts/patch-phase6-operations-ui.cjs
           node --check apps/web/build-scripts/patch-phase61-professional-ui.cjs
       - name: Simulate mobile weight button clicks
@@ -44,6 +46,14 @@ jobs:
           VITE_API_URL: https://genit-api-production.up.railway.app
           GENIT_CLOUD_REQUIRED: 'true'
         run: npm run build
+      - name: Install Chromium diagnostic runtime
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install chromium
+      - name: Diagnose deployed Formulari i Peshave freeze
+        env:
+          TARGET_URL: https://genit-web-production.up.railway.app/?diagnostic=weight-freeze
+        run: node scripts/diagnose-weight-freeze.mjs
       - name: Build from isolated Railway source root
         env:
           VITE_API_URL: https://genit-api-production.up.railway.app
