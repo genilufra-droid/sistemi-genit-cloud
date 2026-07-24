@@ -1,0 +1,55 @@
+name: Test Phase 7.3 Odoo shell
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  odoo-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate source syntax
+        run: |
+          node --check apps/web/phase73-odoo-shell.js
+          node --check apps/web/build-scripts/patch-phase73-odoo-shell.cjs
+          node --check tests/phase73-odoo-shell-dom.mjs
+      - name: Install web and DOM test dependencies
+        run: |
+          npm --prefix apps/web ci --workspaces=false
+          npm install --no-save --ignore-scripts jsdom@26
+      - name: Test Odoo navigation search selects and numeric input
+        run: node tests/phase73-odoo-shell-dom.mjs
+      - name: Build final web package
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: npm run build
+      - name: Verify final patch order and functionality markers
+        run: |
+          grep -q 'SG_PHASE73_ODOO_SHELL_START' apps/web/dist/index.html
+          grep -q 'Kërko module, dokumente, artikuj' apps/web/dist/index.html
+          grep -q 'sg73-native-select' apps/web/dist/index.html
+          grep -q 'installNumericStabilizer' apps/web/dist/index.html
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('apps/web/dist/index.html','utf8');
+          const p72=html.lastIndexOf('SG_PHASE72_ODOO_DOCUMENT_LINKS_UI_START');
+          const p73=html.lastIndexOf('SG_PHASE73_ODOO_SHELL_START');
+          if(p72<0||p73<p72)throw new Error('Phase 7.3 nuk është patch-i i fundit.');
+          console.log('PHASE73_BUILD_ORDER_SUCCESS');
+          NODE
+      - name: Build Railway Docker image
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=https://genit-api-production.up.railway.app \
+            --build-arg GENIT_CLOUD_REQUIRED=true \
+            -t sistemi-genit-web:phase73 \
+            apps/web
