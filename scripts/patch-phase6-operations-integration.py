@@ -40,10 +40,18 @@ if 'installPhase6OperationsRoutes({' not in text:
     anchor='installPhase5FinanceRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });'
     if anchor not in text: raise SystemExit('Phase 5 route anchor missing')
     text=text.replace(anchor,anchor+'\ninstallPhase6OperationsRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });',1)
-old_modules="{ group:'Operacione',phase:4,active:true,items:['Shpenzime','Logjistikë','Ngarkesa & Eksport','Asete & Investime'] },"
-new_modules="{ group:'Operacione',phase:6,active:true,items:['Shpenzime','Kategori Shpenzimesh','Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },"
-if old_modules in text: text=text.replace(old_modules,new_modules,1)
-elif new_modules not in text: raise SystemExit('Operations module catalog anchor missing')
+legacy_modules="{ group:'Operacione',phase:4,active:true,items:['Shpenzime','Logjistikë','Ngarkesa & Eksport','Asete & Investime'] },"
+phase6_modules="{ group:'Operacione',phase:6,active:true,items:['Shpenzime','Kategori Shpenzimesh','Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },"
+canonical_finance="{ group:'Arka & Banka',phase:5,active:true,items:['Shpenzime','Kategori Shpenzimesh','Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },"
+canonical_operations="{ group:'Operacione & Logjistikë',phase:6,active:true,items:['Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },"
+if legacy_modules in text:
+    text=text.replace(legacy_modules,phase6_modules,1)
+elif phase6_modules in text:
+    pass
+elif canonical_finance in text and canonical_operations in text:
+    pass
+else:
+    raise SystemExit('Operations module catalog anchor missing')
 text=text.replace("console.log('Sistemi Genit Cloud Phase 5 Finance routes installed.');","console.log('Sistemi Genit Cloud Phase 6 Operations routes installed over Phase 5 Finance.');")
 launcher.write_text(text,encoding='utf-8')
 

@@ -1,0 +1,23 @@
+name: Test final navigation registry
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Validate source and production build
+        run: |
+          node --check apps/web/phase70-navigation-registry.js
+          node --check apps/web/build-scripts/patch-phase70-navigation-registry.cjs
+          npm --prefix apps/web ci --workspaces=false
+          npm --prefix apps/web run build
+          grep -q 'SG_PHASE70_NAVIGATION_REGISTRY_START' apps/web/dist/index.html
+      - name: Verify unique modules and working routes
+        run: node tests/navigation-registry-smoke.cjs

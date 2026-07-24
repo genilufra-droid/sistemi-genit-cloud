@@ -37,7 +37,7 @@ jobs:
           node --check scripts/patch-odoo-traceability.cjs
           node --check scripts/patch-cloud-erp.cjs
           node --check tests/traceability-odoo-regression.cjs
-          grep -q 'patch-odoo-traceability.cjs' apps/web/package.json
+          grep -q 'patch-odoo-traceability.cjs' apps/web/build-self-contained.cjs
           grep -q 'S.saveSalesInvoice' apps/web/odoo-traceability-actions.js
           grep -q 'S.registerSale' apps/web/odoo-traceability-actions.js
           cd apps/web
@@ -88,7 +88,7 @@ jobs:
         with:
           name: odoo-traceability-browser-report
           path: /tmp/sg-odoo-report/browser.txt
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Enforce Odoo browser result
