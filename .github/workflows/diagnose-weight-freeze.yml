@@ -26,7 +26,7 @@ jobs:
           npx playwright install chromium
       - name: Reproduce production freeze
         env:
-          TARGET_URL: https://genit-web-production.up.railway.app/?diagnostic=weight-freeze-v66
+          TARGET_URL: https://genit-web-production.up.railway.app/?diagnostic=weight-freeze-v67
           DIAGNOSTIC_OUTPUT: /tmp/weight-freeze-result.json
           DIAGNOSTIC_SCREENSHOT: /tmp/weight-freeze-diagnostic.png
           DIAGNOSTIC_HTML: /tmp/weight-freeze-page.html
