@@ -1,0 +1,39 @@
+name: Test Phase 6.3 weight no-loop
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/phase63-traceability-ui-hotfix.js'
+      - 'apps/web/build-scripts/patch-phase63-traceability-ui-hotfix.cjs'
+      - 'scripts/test-phase63-weight-no-loop.mjs'
+      - '.github/workflows/test-phase63-weight-no-loop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check JavaScript syntax
+        run: |
+          node --check apps/web/phase63-traceability-ui-hotfix.js
+          node --check scripts/test-phase63-weight-no-loop.mjs
+      - name: Test Formulari i Peshës without DOM loop
+        run: node scripts/test-phase63-weight-no-loop.mjs
+      - name: Build final web HTML
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: |
+          npm ci --workspaces=false
+          npm run build
+          grep -q 'SG_PHASE63_NO_GLOBAL_DOM_OBSERVER' dist/index.html
+          test "$(grep -o 'SG_PHASE63_NO_GLOBAL_DOM_OBSERVER' dist/index.html | wc -l)" -eq 1

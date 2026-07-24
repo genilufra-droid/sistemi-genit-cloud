@@ -16,7 +16,7 @@
   function operatorName(){try{var u=(Auth&&Auth.currentUser)||(Auth&&Auth.getCurrentUser&&Auth.getCurrentUser());return(u&&(u.displayName||u.fullName||u.username))||'Administrator';}catch(_){return'Administrator';}}
   function toastError(error){App.toast(error&&error.message?error.message:String(error),'error');}
 
-  function makeOptionalLabel(id,text){var el=document.getElementById(id);if(!el)return;var group=el.closest('.form-group');var label=group&&group.querySelector('label');if(label)label.textContent=text+' (opsionale)';}
+  function makeOptionalLabel(id,text){var el=document.getElementById(id);if(!el)return;var group=el.closest('.form-group');var label=group&&group.querySelector('label');var next=text+' (opsionale)';if(label&&label.textContent!==next)label.textContent=next;}
   function applyOptionalOriginUi(){
     makeOptionalLabel('wf-p4-farm','Ferma');
     makeOptionalLabel('sg62-weight-plant','Bima');
@@ -93,7 +93,7 @@
   App.sg62PrintWeightDocument=function(){if(!previewData)previewData=collectPreview();var w=global.open('','_blank');if(!w)return this.toast('Shfletuesi bllokoi printimin.','error');w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(previewData.documentNo)+'</title><style>'+ticketCss()+'</style></head><body>'+receiptHtml(previewData)+'<script>window.onload=function(){window.print();};<\/script></body></html>');w.document.close();};
   App.sg62PdfWeightDocument=function(){try{previewData=previewData||collectPreview();if(!global.jspdf||!global.jspdf.jsPDF)throw new Error('PDF nuk është i disponueshëm.');var doc=new global.jspdf.jsPDF({unit:'mm',format:[58,82],orientation:'portrait'}),c=company();doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text('KOPJE FORMULARI',29,7,{align:'center'});doc.setFontSize(13);doc.text('FORMULARI I PESHES',29,13,{align:'center'});doc.setFontSize(10);doc.text(String(c.name||'Sistemi Genit').slice(0,28),29,18,{align:'center'});doc.setLineWidth(.3);doc.line(2,23,56,23);doc.setFontSize(7);doc.setFont('helvetica','normal');doc.text('Dokumenti: '+String(previewData.documentNo||''),3,28);doc.text('Data: '+String(previewData.date||''),3,32);doc.text('Artikulli: '+String(previewData.product||'').slice(0,28),3,36);doc.line(2,40,56,40);doc.line(29,40,29,65);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('AMB',15.5,46,{align:'center'});doc.text('PESHE NETO',42.5,46,{align:'center'});doc.setFontSize(15);doc.text(fmt(previewData.amb),15.5,57,{align:'center'});doc.text(fmt(previewData.net),42.5,57,{align:'center'});doc.setFontSize(7);doc.text(String(previewData.packagingUnit||''),15.5,62,{align:'center'});doc.text('kg',42.5,62,{align:'center'});doc.line(2,65,56,65);doc.setFont('helvetica','normal');doc.setFontSize(6);doc.text('Sistemi Genit Cloud',29,74,{align:'center'});doc.save('Formular_Peshe_58mm_'+String(previewData.documentNo||'').replace(/[^a-z0-9_-]+/gi,'_')+'.pdf');}catch(error){toastError(error);}};
 
-  var observer=new MutationObserver(function(){applyOptionalOriginUi();});observer.observe(document.documentElement,{childList:true,subtree:true});
+  /* SG_PHASE63_NO_GLOBAL_DOM_OBSERVER — formulari e aplikon UI-në pas renderimit, pa cikël MutationObserver. */
   applyOptionalOriginUi();
 })(window);
 /* SG_PHASE63_TRACEABILITY_UI_HOTFIX_END */
