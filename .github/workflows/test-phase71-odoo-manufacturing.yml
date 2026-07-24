@@ -42,8 +42,13 @@ jobs:
           npm ci --workspaces=false
           VITE_API_URL=http://127.0.0.1:3000 GENIT_CLOUD_REQUIRED=true npm run build
           grep -q 'SG_PHASE71_ODOO_MANUFACTURING_UI_START' dist/index.html
+          grep -q 'SG_PHASE71_MANUFACTURING_DOCUMENT_LINKS_START' dist/index.html
           grep -q 'PRODHIMI' dist/index.html
           grep -q 'manufacturingWorkOrders' dist/index.html
+          grep -q 'openManufacturingSampleDocument' dist/index.html
+          grep -q 'openManufacturingCampaignDocument' dist/index.html
+          grep -q 'openManufacturingWorkOrderDocument' dist/index.html
+          grep -q 'openManufacturingTransferDocument' dist/index.html
       - name: Start API
         run: |
           cd apps/api
@@ -67,8 +72,15 @@ jobs:
           if(cols.rowCount!==6)throw new Error('Manufacturing columns missing from process_orders');
           await c.end();console.log('PHASE71_SCHEMA_SUCCESS');})().catch(e=>{console.error(e);process.exit(1)});
           NODE
-          status=$(curl -s -o /tmp/mfg.json -w '%{http_code}' http://127.0.0.1:3000/api/manufacturing/bootstrap)
-          test "$status" = "401"
+          for path in \
+            /api/manufacturing/bootstrap \
+            /api/manufacturing/samples/00000000-0000-0000-0000-000000000000 \
+            /api/manufacturing/campaigns/00000000-0000-0000-0000-000000000000 \
+            /api/manufacturing/work-orders/00000000-0000-0000-0000-000000000000 \
+            /api/manufacturing/transfers/00000000-0000-0000-0000-000000000000; do
+            status=$(curl -s -o /tmp/mfg.json -w '%{http_code}' "http://127.0.0.1:3000${path}")
+            test "$status" = "401"
+          done
       - name: Show API log
         if: always()
         run: cat /tmp/phase71-api.log || true
