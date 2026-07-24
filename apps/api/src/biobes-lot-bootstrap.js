@@ -7,6 +7,7 @@ import {
   migrateBiobesLotCode,
   rewriteShipmentLotSql,
 } from './biobes-lot-code.js';
+import { migrateBiobesLotStageCompatibility } from './biobes-lot-stage-compat.js';
 
 const realCreateServer = http.createServer;
 const realListen = net.Server.prototype.listen;
@@ -66,6 +67,7 @@ try {
   http.createServer=realCreateServer;
   if(!capturedApp)throw new Error('Bootstrap-i BioBes nuk arriti të kapë Express API.');
 
+  await migrateBiobesLotStageCompatibility(pool);
   await migrateBiobesLotCode(pool);
   const router=capturedApp.router||capturedApp._router;
   if(!router?.stack)throw new Error('Express route stack nuk u gjet për logjikën BioBes.');
