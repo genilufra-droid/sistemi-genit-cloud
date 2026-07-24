@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/web/**'
       - 'scripts/patch-*.cjs'
+      - 'scripts/test-phase64-weight-buttons.mjs'
       - '.github/workflows/test-web-runtime.yml'
   workflow_dispatch:
 
@@ -31,8 +32,12 @@ jobs:
           node --check apps/web/build-self-contained.cjs
           node --check apps/web/phase6-operations-ui.js
           node --check apps/web/phase61-professional-ui.js
+          node --check apps/web/phase64-weight-visible-actions.js
+          node --check scripts/test-phase64-weight-buttons.mjs
           node --check scripts/patch-phase6-operations-ui.cjs
           node --check apps/web/build-scripts/patch-phase61-professional-ui.cjs
+      - name: Simulate mobile weight button clicks
+        run: node scripts/test-phase64-weight-buttons.mjs
       - name: Build web
         working-directory: apps/web
         env:
@@ -55,7 +60,10 @@ jobs:
           grep -q 'SG_PHASE5_FINANCE_UI_START' dist/index.html
           grep -q 'SG_PHASE6_OPERATIONS_UI_START' dist/index.html
           grep -q 'SG_PHASE61_PROFESSIONAL_UI_START' dist/index.html
+          grep -q 'SG_PHASE64_WEIGHT_VISIBLE_ACTIONS_START' dist/index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' dist/index.html
+          grep -q 'Shto Formular Peshimi' dist/index.html
+          grep -q 'Ruaj Formularin' dist/index.html
       - name: Start production runtime
         working-directory: apps/web
         env:
@@ -76,10 +84,12 @@ jobs:
           grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/index.html
           grep -q 'SG_PHASE6_OPERATIONS_UI_START' /tmp/index.html
           grep -q 'SG_PHASE61_PROFESSIONAL_UI_START' /tmp/index.html
+          grep -q 'SG_PHASE64_WEIGHT_VISIBLE_ACTIONS_START' /tmp/index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/index.html
           grep -q 'Paneli Operacional' /tmp/index.html
           grep -q 'Pamje &amp; Eksport' /tmp/index.html
           grep -q 'FORMULAR PESHE' /tmp/index.html
+          grep -q 'Shto Formular Peshimi' /tmp/index.html
       - name: Stop local runtime
         run: test -f /tmp/genit-web.pid && kill $(cat /tmp/genit-web.pid) || true
       - name: Build Railway Docker image
@@ -105,7 +115,9 @@ jobs:
           grep -q 'SG_PHASE5_FINANCE_UI_START' /tmp/docker-index.html
           grep -q 'SG_PHASE6_OPERATIONS_UI_START' /tmp/docker-index.html
           grep -q 'SG_PHASE61_PROFESSIONAL_UI_START' /tmp/docker-index.html
+          grep -q 'SG_PHASE64_WEIGHT_VISIBLE_ACTIONS_START' /tmp/docker-index.html
           grep -q 'SG_PHASE43_EXPORT_EXTENSIONS_UI_START' /tmp/docker-index.html
+          grep -q 'Shto Formular Peshimi' /tmp/docker-index.html
       - name: Show logs and stop runtimes
         if: always()
         run: |
