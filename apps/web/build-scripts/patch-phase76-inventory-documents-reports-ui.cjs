@@ -17,5 +17,5 @@ html=html.replace(close,start+'\n<script id="sg-phase76-inventory-documents-repo
 fs.writeFileSync(htmlPath,html);
 const check=fs.readFileSync(htmlPath,'utf8');
 if((check.match(/SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_PATCH_START/g)||[]).length!==1)throw new Error('Patch-i Phase 7.6 nuk është idempotent.');
-['SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START','20 Raportet e Magazinës','FLETË HYRJE','FLETË DALJE','Gjurmueshmëria Furnitor-Lot-Klient','sg76PrintDocument'].forEach((marker)=>{if(!check.includes(marker))throw new Error('Mungon '+marker);});
+['SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START','20 Raportet e Magazinës','FLETË HYRJE','FLETË DALJE','/api/inventory/reports-v2','sg76PrintDocument'].forEach((marker)=>{if(!check.includes(marker))throw new Error('Mungon '+marker);});
 console.log('Phase 7.6 Inventory documents and reports UI injected.');
