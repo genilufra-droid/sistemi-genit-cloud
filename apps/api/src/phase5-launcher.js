@@ -13,6 +13,8 @@ import { installGlobalAuditTrail, migrateGlobalAuditTrail } from './global-audit
 import { installBiobesLotCodeRoutes, migrateBiobesLotCode, rewriteShipmentLotSql } from './biobes-lot-code.js';
 import { migrateBiobesLotStageCompatibility } from './biobes-lot-stage-compat.js';
 import { installPhase71ManufacturingRoutes, migratePhase71Manufacturing } from './phase71-manufacturing.js';
+import { installPhase75InventoryRoutes, migratePhase75Inventory } from './phase75-inventory.js';
+import { installPhase75InventoryDefaultsMiddleware } from './phase75-inventory-defaults.js';
 
 pg.types.setTypeParser(1082, (value) => value);
 
@@ -60,7 +62,7 @@ http.createServer = function captureApp(app, ...args) {
 
 await import('./server.js');
 http.createServer = originalCreateServer;
-if (!capturedApp || !pendingListen) throw new Error('Phase 7.1 nuk arriti të kapë nisjen e Express API.');
+if (!capturedApp || !pendingListen) throw new Error('Phase 7.5 nuk arriti të kapë nisjen e Express API.');
 
 const { Pool } = pg;
 const pool = new Pool({
@@ -187,6 +189,7 @@ await migratePhase63TraceabilityFixes(pool);
 await migrateBiobesLotStageCompatibility(pool);
 await migrateBiobesLotCode(pool);
 await migratePhase71Manufacturing(pool);
+await migratePhase75Inventory(pool);
 await pool.query(`
   CREATE OR REPLACE FUNCTION sg_sync_business_document_payment_fields()
   RETURNS TRIGGER AS $$
@@ -217,6 +220,8 @@ installPhase62TraceabilityDossierRoutes({ app:capturedApp, pool, authRequired, r
 installPhase63TraceabilityFixes({ router, pool, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 installBiobesLotCodeRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds });
 installPhase71ManufacturingRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
+installPhase75InventoryDefaultsMiddleware({ app:capturedApp, pool, authRequired, accessibleCompanyIds });
+installPhase75InventoryRoutes({ app:capturedApp, pool, authRequired, requireRoles, assertCompanyAccess, accessibleCompanyIds, audit, emitTenant });
 router.stack.push(...terminalLayers);
 
 const modulesLayer = router.stack.find((layer) => layer.route?.path === '/api/modules');
@@ -225,9 +230,10 @@ if (modulesLayer?.route?.stack?.length) {
   target.handle = (_req, res) => res.json([
     { group:'Cloud Core',phase:1,active:true,items:['Dashboard','Kompanitë','Magazinat','Përdoruesit','Audit Log','Gjurmë Përdoruesi & Pajisjeje'] },
     { group:'Blerje & Peshim',phase:2,active:true,items:['Formulari i Peshave','Kërkesa për Ofertë','Porosi Blerjeje','Pranime','Fatura Blerjeje'] },
-    { group:'Shitje & Magazinë',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje','Stoku'] },
+    { group:'Shitje',phase:2,active:true,items:['Oferta','Porosi Shitjeje','Fletë-Dalje','Fatura Shitjeje'] },
+    { group:'Inventory / Magazina',phase:7.5,active:true,items:['Paneli Inventory','Pranime','Sistemim në Stok','Transferime të Brendshme','Përgatitje Daljeje','Dërgesa','Rregullime Inventari','Gjendja','Lokacionet','Lotet','Rregullat e Furnizimit','Raport Stoku','Raport Lokacionesh','Historiku i Lëvizjeve','Vlerësimi','Stoku në Datë','Stoku pa Lëvizje','Diferencat e Inventarit'] },
     { group:'Gjurmueshmëri 360°',phase:6.9,active:true,items:['Ferma & Origjina','Katalogu me 165 kode BioBes','Periudha I/II/III','Bimët','Formulari i Peshës me Origjinë Opsionale','Kontroll Cilësie','Faturë Blerje','Fletë-Hyrje & Etiketë 58 mm','Lote B0/B1','Proces & Gjendje B6','Loti Final i Shitjes B2/B3','Dosja e Dokumenteve'] },
-    { group:'Prodhimi / Manufacturing',phase:7.1,active:true,items:['Paneli i Prodhimit','Mostrat e Klientit','Fushatat e Prodhimit','Urdhrat e Punës','Proceset','Makineritë / Qendrat e Punës','Rrugët e Prodhimit','Lokacionet e Procesit','Kontrollet e Cilësisë','Paketimi','Lotet Finale të Klientit','Gjurmueshmëria Mostër → Fermer → Klient'] },
+    { group:'Prodhimi / Manufacturing',phase:7.5,active:true,items:['Paneli i Prodhimit','Mostrat e Klientit','Fushatat e Prodhimit','Urdhrat e Punës','Proceset','Makineritë / Qendrat e Punës','Rrugët e Prodhimit','Lokacionet e Procesit','Kontrollet e Cilësisë','Paketimi','Lotet Finale të Klientit','Gjurmueshmëria Mostër → Fermer → Klient'] },
     { group:'Arka & Banka',phase:5,active:true,items:['Shpenzime','Kategori Shpenzimesh','Mandat Arkëtimi','Mandat Pagese','Ditari i Arkës','Posta e Bankës','Rakordimi','Mbyllja Ditore','Raportet'] },
     { group:'Operacione & Logjistikë',phase:6,active:true,items:['Shoferë','Itinerare','Udhëtime','Karburant','Mirëmbajtje & Riparime','15 Raporte Logjistike','Asete & Investime','Amortizim','Raporte Asetesh'] },
   ]);
@@ -235,4 +241,4 @@ if (modulesLayer?.route?.stack?.length) {
 
 pendingListen.server.listen = pendingListen.originalListen;
 pendingListen.originalListen.apply(pendingListen.server, pendingListen.listenArgs);
-console.log('Sistemi Genit Cloud Phase 7.1: Odoo Manufacturing, mostra, fushata, procese, makineri, QC dhe lote finale installed.');
+console.log('Sistemi Genit Cloud Phase 7.5: Odoo Inventory, search-as-you-type, transferime, inventar dhe raporte installed.');
