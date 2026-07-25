@@ -1,0 +1,117 @@
+name: Test Phase 7.6 Inventory Reports Documents
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory-reports-documents:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_phase76_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_phase76_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_phase76_test
+      JWT_SECRET: phase76-inventory-reports-documents-secret-32
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+      TEST_API_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - name: Validate syntax
+        run: |
+          node --check apps/api/src/phase76-inventory-reports.js
+          node --check apps/api/src/phase76-launcher.js
+          node --check apps/web/phase76-inventory-documents-reports-ui.js
+          node --check apps/web/build-scripts/patch-phase76-inventory-documents-reports-ui.cjs
+          node --check tests/phase76-inventory-reports-documents.mjs
+          node --check tests/phase76-inventory-ui-smoke.mjs
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --workspaces=false
+      - name: Check API package
+        working-directory: apps/api
+        run: npm run check
+      - name: Start Phase 7.6 API
+        working-directory: apps/api
+        run: |
+          npm start > /tmp/genit-phase76-api.log 2>&1 &
+          echo $! > /tmp/genit-phase76-api.pid
+          for attempt in $(seq 1 75); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            if ! kill -0 $(cat /tmp/genit-phase76-api.pid) 2>/dev/null; then
+              echo 'API process stopped before health check.'
+              tail -n 160 /tmp/genit-phase76-api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          tail -n 160 /tmp/genit-phase76-api.log
+          exit 1
+      - name: Test 20 reports and document flow
+        run: |
+          set -o pipefail
+          node tests/phase76-inventory-reports-documents.mjs 2>&1 | tee /tmp/phase76-test.log
+      - name: Test photo-style UI and no dropdown
+        run: node tests/phase76-inventory-ui-smoke.mjs
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci --workspaces=false
+      - name: Build final web package
+        working-directory: apps/web
+        env:
+          VITE_API_URL: http://127.0.0.1:3000
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: npm run build
+      - name: Verify Phase 7.6 markers
+        run: |
+          grep -q 'SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START' apps/web/dist/index.html
+          grep -q '20 Raportet e Magazinës' apps/web/dist/index.html
+          grep -q 'FLETË HYRJE' apps/web/dist/index.html
+          grep -q 'FLETË DALJE' apps/web/dist/index.html
+          test "$(grep -o 'SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_PATCH_START' apps/web/dist/index.html | wc -l)" -eq 1
+      - name: Install root workspace
+        run: npm ci
+      - name: Validate real Railway build dispatch
+        run: |
+          RAILWAY_SERVICE_NAME=genit-api npm run build
+          RAILWAY_SERVICE_NAME=genit-web VITE_API_URL=https://genit-api-production.up.railway.app GENIT_CLOUD_REQUIRED=true npm run build
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase76-diagnostics
+          path: |
+            /tmp/genit-phase76-api.log
+            /tmp/phase76-test.log
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Stop API
+        if: always()
+        run: test -f /tmp/genit-phase76-api.pid && kill $(cat /tmp/genit-phase76-api.pid) || true
