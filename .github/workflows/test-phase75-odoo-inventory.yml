@@ -1,0 +1,122 @@
+name: Test Phase 7.5 Odoo Inventory
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: genit_inventory_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d genit_inventory_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/genit_inventory_test
+      JWT_SECRET: phase75-inventory-test-secret-minimum-32-characters
+      NODE_ENV: test
+      CORS_ORIGIN: http://127.0.0.1:4173
+      PORT: 3000
+      TEST_API_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - name: Validate syntax
+        run: |
+          node --check apps/api/src/phase5-launcher.js
+          node --check apps/api/src/phase75-query-hotfix-launcher.js
+          node --check apps/api/src/phase75-inventory.js
+          node --check apps/api/src/phase75-inventory-defaults.js
+          node --check apps/web/phase75-odoo-inventory-ui.js
+          node --check apps/web/build-scripts/patch-phase75-odoo-inventory-ui.cjs
+          node --check tests/phase75-inventory-flow.mjs
+          node --check tests/phase75-inventory-ui-smoke.mjs
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --workspaces=false
+      - name: Check API package
+        working-directory: apps/api
+        run: npm run check
+      - name: Start Phase 7.5 API
+        working-directory: apps/api
+        run: |
+          npm start > /tmp/genit-phase75-api.log 2>&1 &
+          echo $! > /tmp/genit-phase75-api.pid
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            if ! kill -0 $(cat /tmp/genit-phase75-api.pid) 2>/dev/null; then
+              echo 'API process stopped before health check.'
+              tail -n 120 /tmp/genit-phase75-api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          tail -n 120 /tmp/genit-phase75-api.log
+          exit 1
+      - name: Test receipts transfers counts and reports
+        run: |
+          set -o pipefail
+          node tests/phase75-inventory-flow.mjs 2>&1 | tee /tmp/phase75-test.log
+      - name: Test search-as-you-type and quick-create UI
+        run: node tests/phase75-inventory-ui-smoke.mjs
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci --workspaces=false
+      - name: Build final web package
+        working-directory: apps/web
+        env:
+          VITE_API_URL: http://127.0.0.1:3000
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: npm run build
+      - name: Verify final Inventory markers
+        run: |
+          grep -q 'SG_PHASE75_ODOO_INVENTORY_UI_START' apps/web/dist/index.html
+          grep -q 'Paneli Inventory' apps/web/dist/index.html
+          grep -q 'Ruaj dhe Zgjidh' apps/web/dist/index.html
+          grep -q 'Raportet Inventory' apps/web/dist/index.html
+          test "$(grep -o 'SG_PHASE75_ODOO_INVENTORY_UI_PATCH_START' apps/web/dist/index.html | wc -l)" -eq 1
+      - name: Install root workspace
+        run: npm ci
+      - name: Validate real Railway build dispatch
+        run: |
+          RAILWAY_SERVICE_NAME=genit-api npm run build
+          RAILWAY_SERVICE_NAME=genit-web VITE_API_URL=https://genit-api-production.up.railway.app GENIT_CLOUD_REQUIRED=true npm run build
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase75-diagnostics
+          path: |
+            /tmp/genit-phase75-api.log
+            /tmp/phase75-test.log
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Show API log
+        if: always()
+        run: tail -n 120 /tmp/genit-phase75-api.log || true
+      - name: Stop API
+        if: always()
+        run: test -f /tmp/genit-phase75-api.pid && kill $(cat /tmp/genit-phase75-api.pid) || true
