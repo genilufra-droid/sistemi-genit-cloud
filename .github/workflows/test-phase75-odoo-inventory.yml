@@ -46,6 +46,7 @@ jobs:
       - name: Validate syntax
         run: |
           node --check apps/api/src/phase5-launcher.js
+          node --check apps/api/src/phase75-query-hotfix-launcher.js
           node --check apps/api/src/phase75-inventory.js
           node --check apps/api/src/phase75-inventory-defaults.js
           node --check apps/web/phase75-odoo-inventory-ui.js
@@ -75,7 +76,9 @@ jobs:
           tail -n 120 /tmp/genit-phase75-api.log
           exit 1
       - name: Test receipts transfers counts and reports
-        run: node tests/phase75-inventory-flow.mjs
+        run: |
+          set -o pipefail
+          node tests/phase75-inventory-flow.mjs 2>&1 | tee /tmp/phase75-test.log
       - name: Test search-as-you-type and quick-create UI
         run: node tests/phase75-inventory-ui-smoke.mjs
       - name: Install web dependencies
@@ -98,12 +101,14 @@ jobs:
         run: |
           docker build -t sistemi-genit-api:phase75 apps/api
           docker build --build-arg VITE_API_URL=https://genit-api-production.up.railway.app --build-arg GENIT_CLOUD_REQUIRED=true -t sistemi-genit-web:phase75 apps/web
-      - name: Upload API diagnostic log
+      - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase75-api-log
-          path: /tmp/genit-phase75-api.log
+          name: phase75-diagnostics
+          path: |
+            /tmp/genit-phase75-api.log
+            /tmp/phase75-test.log
           if-no-files-found: ignore
           retention-days: 3
       - name: Show API log
