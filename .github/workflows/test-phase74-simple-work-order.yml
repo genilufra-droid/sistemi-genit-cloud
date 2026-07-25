@@ -1,0 +1,55 @@
+name: Test Phase 7.4 simple work order
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  simple-work-order:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate syntax
+        run: |
+          node --check apps/web/phase74-simple-work-order-ui.js
+          node --check apps/web/build-scripts/patch-phase74-simple-work-order-ui.cjs
+          node --check tests/phase74-simple-work-order-smoke.mjs
+      - name: Install dependencies
+        run: |
+          npm --prefix apps/web ci --workspaces=false
+          npm install --no-save --ignore-scripts jsdom@26
+      - name: Test simple Albanian work order flow
+        run: node tests/phase74-simple-work-order-smoke.mjs
+      - name: Build final web package
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: npm run build
+      - name: Verify final labels and patch order
+        run: |
+          grep -q 'SG_PHASE74_SIMPLE_WORK_ORDER_UI_START' apps/web/dist/index.html
+          grep -q 'FLETË-DALJE E BRENDSHME' apps/web/dist/index.html
+          grep -q 'FLETË-HYRJE NGA PROCESI' apps/web/dist/index.html
+          grep -q 'Produkti i mirë që hyn në magazinë' apps/web/dist/index.html
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('apps/web/dist/index.html','utf8');
+          const p73=html.lastIndexOf('SG_PHASE73_ODOO_SHELL_START');
+          const p74=html.lastIndexOf('SG_PHASE74_SIMPLE_WORK_ORDER_UI_START');
+          if(p73<0||p74<p73)throw new Error('Phase 7.4 nuk është patch-i final.');
+          console.log('PHASE74_BUILD_ORDER_SUCCESS');
+          NODE
+      - name: Build Railway Docker image
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=https://genit-api-production.up.railway.app \
+            --build-arg GENIT_CLOUD_REQUIRED=true \
+            -t sistemi-genit-web:phase74 \
+            apps/web
