@@ -41,6 +41,7 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: |
+            package-lock.json
             apps/api/package-lock.json
             apps/web/package-lock.json
       - name: Validate syntax
@@ -97,11 +98,12 @@ jobs:
           grep -q 'Ruaj dhe Zgjidh' apps/web/dist/index.html
           grep -q 'Raportet Inventory' apps/web/dist/index.html
           test "$(grep -o 'SG_PHASE75_ODOO_INVENTORY_UI_PATCH_START' apps/web/dist/index.html | wc -l)" -eq 1
-      - name: Build Railway Docker images
+      - name: Install root workspace
+        run: npm ci
+      - name: Validate real Railway build dispatch
         run: |
-          set -o pipefail
-          docker build -t sistemi-genit-api:phase75 apps/api 2>&1 | tee /tmp/phase75-api-docker.log
-          docker build --build-arg VITE_API_URL=https://genit-api-production.up.railway.app --build-arg GENIT_CLOUD_REQUIRED=true -t sistemi-genit-web:phase75 apps/web 2>&1 | tee /tmp/phase75-web-docker.log
+          RAILWAY_SERVICE_NAME=genit-api npm run build
+          RAILWAY_SERVICE_NAME=genit-web VITE_API_URL=https://genit-api-production.up.railway.app GENIT_CLOUD_REQUIRED=true npm run build
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,8 +112,6 @@ jobs:
           path: |
             /tmp/genit-phase75-api.log
             /tmp/phase75-test.log
-            /tmp/phase75-api-docker.log
-            /tmp/phase75-web-docker.log
           if-no-files-found: ignore
           retention-days: 3
       - name: Show API log
