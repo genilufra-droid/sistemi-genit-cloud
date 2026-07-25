@@ -45,9 +45,9 @@ jobs:
             apps/web/package-lock.json
       - name: Validate syntax
         run: |
+          node --check apps/api/src/phase5-launcher.js
           node --check apps/api/src/phase75-inventory.js
           node --check apps/api/src/phase75-inventory-defaults.js
-          node --check apps/api/src/phase75-launcher.js
           node --check apps/web/phase75-odoo-inventory-ui.js
           node --check apps/web/build-scripts/patch-phase75-odoo-inventory-ui.cjs
           node --check tests/phase75-inventory-flow.mjs
