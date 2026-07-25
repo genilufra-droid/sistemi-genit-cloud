@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { installPhase75InventoryRoutes, migratePhase75Inventory } from './phase75-inventory.js';
+import { installPhase75InventoryDefaultsMiddleware } from './phase75-inventory-defaults.js';
 
 const originalListen=http.Server.prototype.listen;
 let pending=null;
@@ -27,6 +28,7 @@ function emitTenant(){}
 
 const terminalLayers=router.stack.splice(-2);
 await migratePhase75Inventory(pool);
+installPhase75InventoryDefaultsMiddleware({app:capturedApp,pool,authRequired,accessibleCompanyIds});
 installPhase75InventoryRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,accessibleCompanyIds,audit,emitTenant});
 router.stack.push(...terminalLayers);
 
