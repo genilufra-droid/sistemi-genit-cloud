@@ -1,7 +1,31 @@
 import { randomUUID } from 'node:crypto';
+import pg from 'pg';
 
 const ZERO_UUID='00000000-0000-0000-0000-000000000000';
 const num=(value)=>Number(value||0);
+
+const baseQuery=pg.Client.prototype.query;
+if(!baseQuery.__sgInventoryTransferNoCompat){
+  const patchedQuery=function inventoryTransferNoCompat(config,...args){
+    const queryText=typeof config==='string'?config:config?.text;
+    const values=typeof config==='string'?args[0]:config?.values;
+    if(typeof queryText==='string'&&/INSERT\s+INTO\s+inventory_transfers/i.test(queryText)&&Array.isArray(values)&&values.length===15){
+      return(async()=>{
+        const tenantId=values[1],companyId=values[2],kind=values[5],scheduledDate=String(values[9]||new Date().toISOString()).slice(0,10),year=scheduledDate.slice(0,4);
+        const prefix={RECEIPT:'IN',PUTAWAY:'PUT',INTERNAL:'INT',PICK:'PICK',DELIVERY:'OUT'}[kind]||'INV';
+        const key=`${prefix}-${year}`;
+        const sequence=await baseQuery.call(this,'SELECT last_value FROM inventory_sequences WHERE tenant_id=$1 AND company_id=$2 AND sequence_key=$3',[tenantId,companyId,key]);
+        const transferNo=`${prefix}-${year}-${String(sequence.rows[0]?.last_value||1).padStart(6,'0')}`;
+        const fixed=[...values.slice(0,6),transferNo,...values.slice(6)];
+        if(typeof config==='string')return baseQuery.call(this,config,fixed);
+        return baseQuery.call(this,{...config,values:fixed},...args);
+      })();
+    }
+    return baseQuery.call(this,config,...args);
+  };
+  patchedQuery.__sgInventoryTransferNoCompat=true;
+  pg.Client.prototype.query=patchedQuery;
+}
 
 async function ensureLocation(client,warehouse,type,suffix,name){
   const code=`${warehouse.code}/${suffix}`;
