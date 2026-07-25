@@ -36,6 +36,7 @@ const PATCHES = [
   'patch-phase72-odoo-document-links-ui.cjs',
   'patch-phase73-odoo-shell.cjs',
   'patch-phase74-simple-work-order-ui.cjs',
+  'patch-phase75-odoo-inventory-ui.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -53,6 +54,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE72_ODOO_DOCUMENT_LINKS_UI_START',
   'SG_PHASE73_ODOO_SHELL_START',
   'SG_PHASE74_SIMPLE_WORK_ORDER_UI_START',
+  'SG_PHASE75_ODOO_INVENTORY_UI_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -101,8 +103,8 @@ try {
   for (const marker of REQUIRED_MARKERS) {
     if (!html.includes(marker)) throw new Error(`Build-i final nuk përmban ${marker}.`);
   }
-  if (html.lastIndexOf('SG_PHASE74_SIMPLE_WORK_ORDER_UI_START') < html.lastIndexOf('SG_PHASE73_ODOO_SHELL_START')) {
-    throw new Error('Phase 7.4 duhet të jetë patch-i final pas Odoo Shell.');
+  if (html.lastIndexOf('SG_PHASE75_ODOO_INVENTORY_UI_START') < html.lastIndexOf('SG_PHASE74_SIMPLE_WORK_ORDER_UI_START')) {
+    throw new Error('Phase 7.5 Odoo Inventory duhet të jetë patch-i final pas Urdhrit të Punës.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
