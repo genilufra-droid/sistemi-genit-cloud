@@ -49,9 +49,10 @@ async function ensureWarehouse(client,warehouse){
     CASE WHEN l.lot_type='PACKAGED' THEN $2::uuid WHEN l.lot_type='PROCESSED' THEN $3::uuid ELSE $1::uuid END) AS resolved_location_id
     FROM trace_lots l WHERE l.tenant_id=$4 AND l.company_id=$5 AND l.warehouse_id=$6 AND l.quantity_available>0`,[locations.STOCK,locations.FINISHED,locations.OUTPUT,warehouse.tenant_id,warehouse.company_id,warehouse.id]);
   for(const lot of lots.rows){
+    const tracked=await client.query(`SELECT 1 FROM inventory_quants WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND lot_id=$4 LIMIT 1`,[lot.tenant_id,lot.company_id,lot.warehouse_id,lot.id]);
+    if(tracked.rowCount)continue;
     await client.query(`INSERT INTO inventory_quants(id,tenant_id,company_id,warehouse_id,location_id,product_id,lot_id,on_hand,reserved,unit_cost,last_move_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,NOW())) ON CONFLICT(tenant_id,company_id,warehouse_id,location_id,product_id,COALESCE(lot_id,'${ZERO_UUID}'::uuid))
-      DO UPDATE SET on_hand=GREATEST(inventory_quants.on_hand,EXCLUDED.on_hand),reserved=LEAST(GREATEST(EXCLUDED.reserved,0),GREATEST(inventory_quants.on_hand,EXCLUDED.on_hand)),unit_cost=CASE WHEN inventory_quants.unit_cost=0 THEN EXCLUDED.unit_cost ELSE inventory_quants.unit_cost END,updated_at=NOW()`,[randomUUID(),lot.tenant_id,lot.company_id,lot.warehouse_id,lot.resolved_location_id,lot.product_id,lot.id,num(lot.quantity_available),Math.min(num(lot.quantity_reserved),num(lot.quantity_available)),num(lot.unit_cost),lot.updated_at||lot.created_at]);
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,NOW())) ON CONFLICT(tenant_id,company_id,warehouse_id,location_id,product_id,COALESCE(lot_id,'${ZERO_UUID}'::uuid)) DO NOTHING`,[randomUUID(),lot.tenant_id,lot.company_id,lot.warehouse_id,lot.resolved_location_id,lot.product_id,lot.id,num(lot.quantity_available),Math.min(num(lot.quantity_reserved),num(lot.quantity_available)),num(lot.unit_cost),lot.updated_at||lot.created_at]);
   }
 
   const globalStock=await client.query(`SELECT sm.product_id,SUM(sm.quantity_base)::numeric AS quantity,CASE WHEN SUM(ABS(sm.quantity_base))>0 THEN SUM(ABS(sm.quantity_base)*sm.unit_cost)/SUM(ABS(sm.quantity_base)) ELSE 0 END::numeric AS cost
