@@ -42,6 +42,16 @@ if (!originalQuery.__sg75TransferNumberFix) {
       return originalQuery.call(this, { ...config, text:correctedSql }, ...args);
     }
 
+    if (/json_build_object\s*\(\s*'id'\s*,\s*l\.id\s*,\s*'productId'\s*,\s*l\.product_id/i.test(sqlText)
+      && !/'product_id'\s*,\s*l\.product_id/i.test(sqlText)) {
+      const correctedSql = sqlText
+        .replace(/'productId'\s*,\s*l\.product_id/i, "'productId',l.product_id,'product_id',l.product_id")
+        .replace(/'lotId'\s*,\s*l\.lot_id/i, "'lotId',l.lot_id,'lot_id',l.lot_id")
+        .replace(/'unitCost'\s*,\s*l\.unit_cost/i, "'unitCost',l.unit_cost,'unit_cost',l.unit_cost");
+      if (typeof config === 'string') return originalQuery.call(this, correctedSql, ...args);
+      return originalQuery.call(this, { ...config, text:correctedSql }, ...args);
+    }
+
     return originalQuery.call(this, config, ...args);
   };
   patchedQuery.__sg75TransferNumberFix = true;
