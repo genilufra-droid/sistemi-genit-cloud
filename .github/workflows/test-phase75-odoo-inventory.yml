@@ -63,11 +63,16 @@ jobs:
         run: |
           npm start > /tmp/genit-phase75-api.log 2>&1 &
           echo $! > /tmp/genit-phase75-api.pid
-          for attempt in $(seq 1 90); do
+          for attempt in $(seq 1 60); do
             curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            if ! kill -0 $(cat /tmp/genit-phase75-api.pid) 2>/dev/null; then
+              echo 'API process stopped before health check.'
+              tail -n 120 /tmp/genit-phase75-api.log
+              exit 1
+            fi
             sleep 1
           done
-          cat /tmp/genit-phase75-api.log
+          tail -n 120 /tmp/genit-phase75-api.log
           exit 1
       - name: Test receipts transfers counts and reports
         run: node tests/phase75-inventory-flow.mjs
@@ -93,9 +98,17 @@ jobs:
         run: |
           docker build -t sistemi-genit-api:phase75 apps/api
           docker build --build-arg VITE_API_URL=https://genit-api-production.up.railway.app --build-arg GENIT_CLOUD_REQUIRED=true -t sistemi-genit-web:phase75 apps/web
+      - name: Upload API diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase75-api-log
+          path: /tmp/genit-phase75-api.log
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Show API log
         if: always()
-        run: cat /tmp/genit-phase75-api.log || true
+        run: tail -n 120 /tmp/genit-phase75-api.log || true
       - name: Stop API
         if: always()
         run: test -f /tmp/genit-phase75-api.pid && kill $(cat /tmp/genit-phase75-api.pid) || true
