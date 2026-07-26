@@ -1,0 +1,18 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const root=process.cwd();
+const indexPath=path.join(root,'index.html');
+const scriptPath=path.join(root,'phase92-universal-actions.js');
+if(!fs.existsSync(indexPath))throw new Error('Mungon index.html');
+if(!fs.existsSync(scriptPath))throw new Error('Mungon phase92-universal-actions.js');
+let html=fs.readFileSync(indexPath,'utf8');
+const js=fs.readFileSync(scriptPath,'utf8');
+const marker='SG_PHASE92_UNIVERSAL_ACTIONS_START';
+const re=/\n?<script>\s*\/\* SG_PHASE92_UNIVERSAL_ACTIONS_START[\s\S]*?<\/script>\s*/g;
+html=html.replace(re,'\n');
+const tag=`\n<script>\n${js}\n</script>\n`;
+html=html.includes('</body>')?html.replace('</body>',`${tag}</body>`):html+tag;
+if(!html.includes(marker))throw new Error('Phase 9.2 nuk u injektua');
+fs.writeFileSync(indexPath,html);
+console.log('Phase 9.2 universal actions injected.');
