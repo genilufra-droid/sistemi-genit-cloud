@@ -40,6 +40,7 @@ const PATCHES = [
   'patch-phase76-inventory-documents-reports-ui.cjs',
   'patch-phase80-document-workspace-help.cjs',
   'patch-phase81-sample-search-create.cjs',
+  'patch-phase82-global-search-document-actions.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -61,6 +62,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START',
   'SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START',
   'SG_PHASE81_SAMPLE_SEARCH_CREATE_START',
+  'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -116,7 +118,10 @@ try {
     throw new Error('Phase 8.0 duhet të jetë pas dokumenteve Inventory 7.6.');
   }
   if (html.lastIndexOf('SG_PHASE81_SAMPLE_SEARCH_CREATE_START') < html.lastIndexOf('SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START')) {
-    throw new Error('Phase 8.1 duhet të jetë patch-i final pas dokumenteve dhe Help-it 8.0.');
+    throw new Error('Phase 8.1 duhet të jetë pas dokumenteve dhe Help-it 8.0.');
+  }
+  if (html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START') < html.lastIndexOf('SG_PHASE81_SAMPLE_SEARCH_CREATE_START')) {
+    throw new Error('Phase 8.2 duhet të jetë patch-i final pas Phase 8.1.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
