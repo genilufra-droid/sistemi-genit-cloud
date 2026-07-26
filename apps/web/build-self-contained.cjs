@@ -38,6 +38,7 @@ const PATCHES = [
   'patch-phase74-simple-work-order-ui.cjs',
   'patch-phase75-odoo-inventory-ui.cjs',
   'patch-phase76-inventory-documents-reports-ui.cjs',
+  'patch-phase80-document-workspace-help.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -57,6 +58,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE74_SIMPLE_WORK_ORDER_UI_START',
   'SG_PHASE75_ODOO_INVENTORY_UI_START',
   'SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START',
+  'SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -106,7 +108,10 @@ try {
     if (!html.includes(marker)) throw new Error(`Build-i final nuk përmban ${marker}.`);
   }
   if (html.lastIndexOf('SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START') < html.lastIndexOf('SG_PHASE75_ODOO_INVENTORY_UI_START')) {
-    throw new Error('Phase 7.6 duhet të jetë patch-i final pas Inventory 7.5.');
+    throw new Error('Phase 7.6 duhet të jetë pas Inventory 7.5.');
+  }
+  if (html.lastIndexOf('SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START') < html.lastIndexOf('SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START')) {
+    throw new Error('Phase 8.0 duhet të jetë patch-i final pas dokumenteve Inventory 7.6.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
