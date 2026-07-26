@@ -130,6 +130,44 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       this.toast(error.message||String(error),'error');
     }
   };
+  var CONVERSIONS={
+    purchaseRFQ:[
+      {target:'PURCHASE_ORDER',type:'purchaseOrder',label:'Krijo Porosi'}
+    ],
+    purchaseOrder:[
+      {target:'PURCHASE_RECEIPT',type:'purchaseReceipt',label:'Krijo Pranim'},
+      {target:'PURCHASE_INVOICE',type:'purchaseInvoice',label:'Krijo Faturë'}
+    ],
+    purchaseReceipt:[
+      {target:'PURCHASE_INVOICE',type:'purchaseInvoice',label:'Krijo Faturë'}
+    ],
+    salesQuotation:[
+      {target:'SALES_ORDER',type:'salesOrder',label:'Krijo Porosi'},
+      {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
+    ],
+    salesOrder:[
+      {target:'DELIVERY_NOTE',type:'deliveryNote',label:'Krijo Fletë-Dalje'},
+      {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
+    ],
+    deliveryNote:[
+      {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
+    ]
+  };
+  App.sg95ConvertCloudDocument=async function(id,sourceType,conversion){
+    try{
+      var created=camel(await Cloud.request('/api/documents/'+encodeURIComponent(id)+'/convert',{
+        method:'POST',
+        body:{targetType:conversion.target}
+      }));
+      this.toast(conversion.label+': '+(created.documentNo||'u krijua'));
+      await Cloud.refresh();
+      if(conversion.type==='purchaseInvoice')this.navigate('purchaseList');
+      else if(conversion.type==='salesInvoice')this.navigate('salesList');
+      else this.navigate(this._odooListView(conversion.type));
+    }catch(error){
+      this.toast(error.message||String(error),'error');
+    }
+  };
   var localViewOdooList=App._viewOdooList;
   App._viewOdooList=async function(type){
     await localViewOdooList.call(this,type);
@@ -147,19 +185,33 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
     });
     document.querySelectorAll('#odoo-list-table tbody tr').forEach(function(tr,index){
       var doc=rows[index];
-      if(!doc||doc.status!=='DRAFT')return;
+      if(!doc)return;
       var cell=tr.lastElementChild;
       if(!cell)return;
-      var button=document.createElement('button');
-      button.type='button';
-      button.className='btn btn-green btn-sm';
-      button.textContent='✓ Konfirmo';
-      button.addEventListener('click',function(event){
-        event.preventDefault();
-        event.stopPropagation();
-        App.sg95ConfirmCloudDocument(doc.id,type);
+      if(doc.status==='DRAFT'){
+        var button=document.createElement('button');
+        button.type='button';
+        button.className='btn btn-green btn-sm';
+        button.textContent='✓ Konfirmo';
+        button.addEventListener('click',function(event){
+          event.preventDefault();
+          event.stopPropagation();
+          App.sg95ConfirmCloudDocument(doc.id,type);
+        });
+        cell.appendChild(button);
+      }
+      if(doc.status!=='CANCELLED')(CONVERSIONS[type]||[]).forEach(function(conversion){
+        var convertButton=document.createElement('button');
+        convertButton.type='button';
+        convertButton.className='btn btn-blue btn-sm';
+        convertButton.textContent=conversion.label;
+        convertButton.addEventListener('click',function(event){
+          event.preventDefault();
+          event.stopPropagation();
+          App.sg95ConvertCloudDocument(doc.id,type,conversion);
+        });
+        cell.appendChild(convertButton);
       });
-      cell.appendChild(button);
     });
   };
 }
