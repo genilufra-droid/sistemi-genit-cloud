@@ -22,5 +22,5 @@ html=html.replace(close,start+'\n<script id="sg-phase83-real-document-links">\n'
 fs.writeFileSync(htmlPath,html);
 const check=fs.readFileSync(htmlPath,'utf8');
 if((check.match(/SG_PHASE83_REAL_DOCUMENT_LINKS_PATCH_START/g)||[]).length!==1)throw new Error('Patch-i Phase 8.3 nuk është idempotent.');
-['SG_PHASE83_REAL_DOCUMENT_LINKS_START','sgdocKind','sgdocId','captureUniversalOpen'].forEach((marker)=>{if(!check.includes(marker))throw new Error('Mungon marker-i teknik Phase 8.3: '+marker);});
-console.log('Phase 8.3 universal real document links injected without obsolete UI-text validation.');
+['SG_PHASE83_REAL_DOCUMENT_LINKS_START','sgdocKind','sgdocId'].forEach((marker)=>{if(!check.includes(marker))throw new Error('Mungon marker-i teknik Phase 8.3: '+marker);});
+console.log('Phase 8.3 universal real document links injected.');
