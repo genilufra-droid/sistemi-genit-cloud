@@ -44,6 +44,7 @@ const PATCHES = [
   'patch-phase83-real-document-links.cjs',
   'patch-phase84-electronic-archive.cjs',
   'patch-phase85-professional-document-templates.cjs',
+  'patch-phase86-exact-document-layouts.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -69,6 +70,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE83_REAL_DOCUMENT_LINKS_START',
   'SG_PHASE84_ELECTRONIC_ARCHIVE_START',
   'SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START',
+  'SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -136,7 +138,10 @@ try {
     throw new Error('Phase 8.4 duhet të jetë pas Phase 8.3.');
   }
   if (html.lastIndexOf('SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START') < html.lastIndexOf('SG_PHASE84_ELECTRONIC_ARCHIVE_START')) {
-    throw new Error('Phase 8.5 duhet të jetë patch-i final pas Phase 8.4.');
+    throw new Error('Phase 8.5 duhet të jetë pas Phase 8.4.');
+  }
+  if (html.lastIndexOf('SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START') < html.lastIndexOf('SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START')) {
+    throw new Error('Phase 8.6 duhet të jetë patch-i final pas Phase 8.5.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
