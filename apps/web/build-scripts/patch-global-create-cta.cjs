@@ -11,8 +11,16 @@ const start = '<!-- SG_GLOBAL_CREATE_CTA_START -->';
 const end = '<!-- SG_GLOBAL_CREATE_CTA_END -->';
 
 let html = fs.readFileSync(htmlPath, 'utf8');
-const js = fs.readFileSync(jsPath, 'utf8');
+let js = fs.readFileSync(jsPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
+
+// Fusha reale në formular quhet thjesht “Kategoria”. Varianti i vjetër
+// kërkonte vetëm “kategori artikull”, ndaj CTA “+ Shto të ri” nuk shfaqej.
+js = js.replace(
+  "match:/kategori artikull|product category|category/",
+  "match:/kategori|product category|category/"
+);
+
 new vm.Script(js, { filename: 'global-create-cta.js' });
 const block = `${start}\n<style id="sg-global-create-cta-style">\n${css}\n</style>\n<script id="sg-global-create-cta-script">\n${js}\n</script>\n${end}\n`;
 
@@ -34,7 +42,8 @@ const required = [
   "serverType:'ASSET'", "serverType:'EXPENSE_CATEGORY'",
   "serverType:'CASH_ACCOUNT'", "serverType:'BANK_ACCOUNT'",
   '/api/finance/accounts', "this.hasQuickCreateContext('cashAccount')", "this.hasQuickCreateContext('bankAccount')",
-  "traceLots:[buttonAction('+ Shto Peshim / Pranim'"
+  "traceLots:[buttonAction('+ Shto Peshim / Pranim'",
+  "match:/kategori|product category|category/"
 ];
 for (const marker of required) if (!check.includes(marker)) throw new Error(`Kontrata globale Kërko ose Shto mungon: ${marker}`);
 if (check.includes('modalHtml:') || check.includes('contentHtml:')) throw new Error('Ruajtja e dokumentit nuk duhet të përdorë kopje HTML që humbin eventet.');
