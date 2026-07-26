@@ -62,51 +62,57 @@ function inferKind(table,header,row){
  const text=[header,table?.getAttribute('aria-label'),table?.caption?.textContent,table?.closest('[data-view],[id],[class]')?.textContent?.slice(0,220)].filter(Boolean).join(' ');
  return KIND_PATTERNS.find(([,re])=>re.test(text))?.[0]||'business_document';
 }
-function realUrl(kind,id){
- const u=new URL(location.href);u.searchParams.set('sgdocKind',kind);u.searchParams.set('sgdocId',id);u.searchParams.set('sgdocMode','real');u.hash='document';return u.toString();
-}
+function realUrl(kind,id){const u=new URL(location.href);u.searchParams.set('sgdocKind',kind);u.searchParams.set('sgdocId',id);u.searchParams.set('sgdocMode','real');u.hash='document';return u.toString();}
 function headers(table){return [...(table.tHead?.rows?.[0]?.cells||[])].map(x=>normal(x.textContent));}
 function isDocumentHeader(v){return /(nr\.?|numri|dokument|fatur|flet[eë]|pranim|d[eë]rges|transfer|mandat|lot|formular|urdh[eë]r|kod)/i.test(v);}
+function controlText(el){return normal([el?.getAttribute?.('title'),el?.getAttribute?.('aria-label'),el?.getAttribute?.('data-tooltip'),el?.textContent].filter(Boolean).join(' '));}
+function isProtectedAction(el){
+ const text=controlText(el);
+ return /(^|\s)(edito|edit|fshi|delete|anulo|cancel|dupliko|duplicate|menu|më shumë|me shume|more|opsione|actions?)(\s|$)/i.test(text)
+  ||el?.matches?.('[data-edit],[data-delete],[data-menu],[data-more],[aria-haspopup="menu"],.edit,.btn-edit,.action-edit,.delete,.btn-delete,.dropdown-toggle,.kebab,.more-actions')
+  ||!!el?.closest?.('[data-edit],[data-delete],[data-menu],[data-more],[aria-haspopup="menu"],.dropdown,.menu,.kebab,.more-actions');
+}
 function isViewControl(el){
- if(!el)return false;
- const text=normal([el.getAttribute?.('title'),el.getAttribute?.('aria-label'),el.textContent].filter(Boolean).join(' '));
- return /(^|\s)(shiko|hap|view|open)(\s|$)/i.test(text)||el.matches?.('[data-view],[data-open],[data-action="view"],.view,.btn-view,.action-view')||!!el.querySelector?.('svg, i');
+ if(!el||isProtectedAction(el))return false;
+ const text=controlText(el);
+ if(/(^|\s)(shiko|hap dokument|view|open document)(\s|$)/i.test(text))return true;
+ if(el.matches?.('[data-view],[data-open-document],[data-action="view"],.view,.btn-view,.action-view'))return true;
+ const onclick=el.getAttribute?.('onclick')||'';
+ if(/sg72OpenDocument|OpenDocument|sg75OpenTransfer|sg72OpenBusinessDocument/i.test(onclick))return true;
+ const icon=el.querySelector?.('svg,use,i');
+ const iconText=normal((icon?.getAttribute?.('data-lucide')||'')+' '+(icon?.getAttribute?.('href')||'')+' '+(icon?.className?.baseVal||icon?.className||''));
+ return /(^|[-_\s])(eye|view|preview)([-_\s]|$)/i.test(iconText);
 }
 function openRowDocument(row,source){
  const table=row?.closest?.('table');if(!table)return false;
  const hs=headers(table),id=rowIdentity(row);if(!id)return false;
  const cell=source?.closest?.('td,th');const index=cell?.cellIndex??0;const kind=inferKind(table,hs[index]||'',row);
- window.open(realUrl(kind,id),'_blank','noopener');
- return true;
+ window.open(realUrl(kind,id),'_blank','noopener');return true;
 }
 function enhanceTable(table){
  if(!table||table.dataset.sg83==='1'||table.closest('.sg82-view'))return;
  const hs=headers(table);if(!hs.some(isDocumentHeader))return;
  table.dataset.sg83='1';
  [...(table.tBodies||[])].forEach(tb=>[...tb.rows].forEach(row=>{
-   const id=rowIdentity(row);if(!id)return;
-   row.dataset.sg83DocumentId=id;
-   [...row.cells].forEach((cell,i)=>{
-     const header=hs[i]||'';if(!isDocumentHeader(header)||cell.querySelector('a.sg83-real-doc'))return;
-     const existing=cell.querySelector('button.sg72-doc-link,[onclick*="sg72OpenDocument"],a');
-     const label=normal(existing?.textContent||cell.textContent);if(!label)return;
-     const kind=inferKind(table,header,row);
-     const a=document.createElement('a');a.className='sg83-real-doc';a.href=realUrl(kind,id);a.target='_blank';a.rel='noopener';a.textContent=label;a.title='Hap dokumentin në skedë të re';
-     a.addEventListener('click',e=>{e.stopPropagation();});
-     cell.replaceChildren(a);
-   });
+  const id=rowIdentity(row);if(!id)return;row.dataset.sg83DocumentId=id;
+  [...row.cells].forEach((cell,i)=>{
+   const header=hs[i]||'';if(!isDocumentHeader(header)||cell.querySelector('a.sg83-real-doc'))return;
+   const existing=cell.querySelector('button.sg72-doc-link,[onclick*="sg72OpenDocument"],a');
+   const label=normal(existing?.textContent||cell.textContent);if(!label)return;
+   const kind=inferKind(table,header,row),a=document.createElement('a');
+   a.className='sg83-real-doc';a.href=realUrl(kind,id);a.target='_blank';a.rel='noopener';a.textContent=label;a.title='Hap dokumentin në skedë të re';
+   a.addEventListener('click',e=>e.stopPropagation());cell.replaceChildren(a);
+  });
  }));
 }
 function captureUniversalOpen(e){
  if(e.defaultPrevented||e.button>0)return;
- const target=e.target?.closest?.('a,button,[role="button"],td');if(!target)return;
- if(target.closest('.sg82-view'))return;
+ const target=e.target?.closest?.('a,button,[role="button"],td');if(!target||target.closest('.sg82-view')||isProtectedAction(target))return;
  const row=target.closest('tr');if(!row||!row.closest('table'))return;
- const directLink=target.closest('a.sg83-real-doc');
- if(directLink){e.stopPropagation();return;}
+ const directLink=target.closest('a.sg83-real-doc');if(directLink){e.stopPropagation();return;}
  const cell=target.closest('td,th'),table=row.closest('table'),hs=headers(table),header=hs[cell?.cellIndex??0]||'';
- const shouldOpen=isViewControl(target)||isDocumentHeader(header)||!!target.closest('[onclick*="sg72OpenDocument"],[onclick*="OpenDocument"]');
- if(!shouldOpen)return;
+ const explicitOpen=!!target.closest('[onclick*="sg72OpenDocument"],[onclick*="OpenDocument"],[onclick*="sg75OpenTransfer"],[onclick*="sg72OpenBusinessDocument"]');
+ const shouldOpen=isViewControl(target)||isDocumentHeader(header)||explicitOpen;if(!shouldOpen)return;
  if(openRowDocument(row,target)){e.preventDefault();e.stopImmediatePropagation();}
 }
 function addStyle(){if(document.getElementById('sg83-style'))return;const s=document.createElement('style');s.id='sg83-style';s.textContent='.sg83-real-doc{color:#075985;text-decoration:underline;text-underline-offset:3px;font-weight:700;cursor:pointer}.sg83-real-doc:hover{color:#0c4a6e}';document.head.appendChild(s);}
@@ -116,8 +122,7 @@ function openRequestedRealDocument(){
  document.documentElement.classList.add('sg83-document-tab');
  let tries=0;const timer=setInterval(()=>{tries++;const app=window.App;if(app?.sg72OpenDocument){clearInterval(timer);Promise.resolve(app.sg72OpenDocument(kind,id)).catch(e=>app.toast?.(e?.message||String(e),'error'));}else if(tries>120){clearInterval(timer);}},100);
 }
-addStyle();scan();openRequestedRealDocument();
-document.addEventListener('click',captureUniversalOpen,true);
+addStyle();scan();openRequestedRealDocument();document.addEventListener('click',captureUniversalOpen,true);
 let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;scan();});}).observe(document.documentElement,{subtree:true,childList:true});
 window.SGPhase83={scan,realUrl,openRequestedRealDocument,openRowDocument};
 })();
