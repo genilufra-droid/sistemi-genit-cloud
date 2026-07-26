@@ -19,7 +19,7 @@ ENV VITE_API_URL=${VITE_API_URL} \
     GITHUB_SHA=${GITHUB_SHA}
 
 RUN npm run build \
-    && node -e "const fs=require('node:fs');const p='dist/index.html';if(!fs.existsSync(p)||fs.statSync(p).size===0)throw new Error('dist/index.html mungon ose është bosh');const h=fs.readFileSync(p,'utf8');for(const m of ['SG_PHASE5_FINANCE_UI_START','SG_PHASE6_OPERATIONS_UI_START','SG_PHASE43_EXPORT_EXTENSIONS_UI_START','SG_PHASE83_REAL_DOCUMENT_LINKS_START','SG_PHASE84_ELECTRONIC_ARCHIVE_START']){if(!h.includes(m))throw new Error('Mungon marker-i '+m)}console.log('Railway web artifact validated, bytes='+Buffer.byteLength(h));"
+    && node -e "const fs=require('node:fs');const p='dist/index.html';if(!fs.existsSync(p)||fs.statSync(p).size===0)throw new Error('dist/index.html mungon ose është bosh');const h=fs.readFileSync(p,'utf8');for(const m of ['SG_PHASE5_FINANCE_UI_START','SG_PHASE6_OPERATIONS_UI_START','SG_PHASE43_EXPORT_EXTENSIONS_UI_START','SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START']){if(!h.includes(m))throw new Error('Mungon marker-i '+m)}console.log('Railway web artifact validated, bytes='+Buffer.byteLength(h));"
 
 FROM node:20-alpine AS runtime
 
