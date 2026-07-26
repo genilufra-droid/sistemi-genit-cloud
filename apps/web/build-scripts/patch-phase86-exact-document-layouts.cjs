@@ -20,5 +20,5 @@ html=html.replace(close,start+'\n<script id="sg-phase86-exact-document-layouts">
 fs.writeFileSync(htmlPath,html);
 const check=fs.readFileSync(htmlPath,'utf8');
 if((check.match(/SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_PATCH_START/g)||[]).length!==1)throw new Error('Patch-i Phase 8.6 nuk është idempotent.');
-['SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START','sg86-warehouse','sg86-mandate','sg86-invoice','21,false'].forEach(m=>{if(!check.includes(m))throw new Error('Mungon '+m);});
+['SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START','sg86-warehouse','sg86-mandate','sg86-invoice','warehouseRows','invoiceRows'].forEach(m=>{if(!check.includes(m))throw new Error('Mungon '+m);});
 console.log('Phase 8.6 exact document layouts injected.');
