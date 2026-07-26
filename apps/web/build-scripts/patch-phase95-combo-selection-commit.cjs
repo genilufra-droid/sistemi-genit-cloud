@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const root=process.cwd();
+const indexPath=path.join(root,'index.html');
+const scriptPath=path.join(root,'phase95-combo-selection-commit.js');
+const marker='SG_PHASE95_COMBO_SELECTION_COMMIT_START';
+if(!fs.existsSync(indexPath))throw new Error('Mungon index.html');
+if(!fs.existsSync(scriptPath))throw new Error('Mungon phase95-combo-selection-commit.js');
+let html=fs.readFileSync(indexPath,'utf8');
+const js=fs.readFileSync(scriptPath,'utf8');
+html=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,block=>block.includes(marker)?'':block);
+html+=`\n<script>\n${js}\n</script>\n`;
+if(html.lastIndexOf(marker)<0)throw new Error('Phase 9.5 nuk u injektua');
+fs.writeFileSync(indexPath,html);
+console.log('Phase 9.5 searchable combo selection fix injected.');
