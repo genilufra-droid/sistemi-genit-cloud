@@ -20,5 +20,5 @@ html=html.replace(close,start+'\n<script id="sg-phase85-professional-document-te
 fs.writeFileSync(htmlPath,html);
 const check=fs.readFileSync(htmlPath,'utf8');
 if((check.match(/SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_PATCH_START/g)||[]).length!==1)throw new Error('Patch-i Phase 8.5 nuk është idempotent.');
-['SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START','FATURË BLERJE','FATURË SHITJE','MANDAT ARKËTIMI','MANDAT PAGESE','FLETË HYRJE','FLETË DALJE'].forEach(m=>{if(!check.includes(m))throw new Error('Mungon '+m);});
+['SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START','SG85_INVOICE_PURCHASE','SG85_INVOICE_SALE','SG85_CASH_RECEIPT','SG85_CASH_PAYMENT','SG85_GOODS_RECEIPT','SG85_GOODS_ISSUE'].forEach(m=>{if(!check.includes(m))throw new Error('Mungon '+m);});
 console.log('Phase 8.5 professional document templates injected.');
