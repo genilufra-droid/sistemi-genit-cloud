@@ -43,5 +43,83 @@ document.addEventListener('click',function(e){
 },true);
 document.addEventListener('blur',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('sg61-combo-input'))resolveCombo(e.target.closest('.sg61-combo'));},true);
 global.SGPhase95={resolveCombo:resolveCombo,resolveAll:resolveAll};
+
+var App=global.App;
+var Cloud=global.CloudERP;
+if(App&&Cloud&&typeof Cloud.request==='function'){
+  var localSaveOdooCurrent=App.saveOdooCurrent;
+  var DOC_TYPES={
+    purchaseRFQ:'PURCHASE_RFQ',
+    purchaseOrder:'PURCHASE_ORDER',
+    purchaseReceipt:'PURCHASE_RECEIPT',
+    salesQuotation:'SALES_QUOTE',
+    salesOrder:'SALES_ORDER',
+    deliveryNote:'DELIVERY_NOTE'
+  };
+  function byName(rows,name){
+    var wanted=norm(name);
+    if(!wanted)return null;
+    return (rows||[]).find(function(row){return norm(row&&row.name)===wanted;})||null;
+  }
+  function selectedId(input,rows){
+    if(!input)return'';
+    return input.dataset.selectedId||
+      (global.SGPhase94&&global.SGPhase94.findByName&&((global.SGPhase94.findByName(input.value)||{}).id))||
+      ((byName(rows,input.value)||{}).id)||'';
+  }
+  function camel(row){
+    var out={};
+    Object.keys(row||{}).forEach(function(key){
+      out[key.replace(/_([a-z])/g,function(_,c){return c.toUpperCase();})]=row[key];
+    });
+    return out;
+  }
+  App.saveOdooCurrent=async function(){
+    var type=this._odooType;
+    if(!DOC_TYPES[type])return localSaveOdooCurrent.apply(this,arguments);
+    try{
+      var partnerInput=document.querySelector('#od-partner input');
+      var warehouseInput=document.querySelector('#od-warehouse input');
+      var partnerRows=/^purchase/.test(type)?this.data.suppliers:this.data.customers;
+      var partnerId=selectedId(partnerInput,partnerRows);
+      var warehouseId=selectedId(warehouseInput,this.data.warehouses);
+      if(!partnerId)throw new Error(/^purchase/.test(type)?'Zgjidhni furnitorin nga lista.':'Zgjidhni klientin nga lista.');
+      if(!warehouseId)throw new Error('Zgjidhni magazinën nga lista.');
+      var lines=(this._odooLines||[]).filter(function(line){return line.productId&&Number(line.quantity)>0;});
+      if(!lines.length)throw new Error('Duhet së paku një rresht artikulli me sasi më të madhe se zero.');
+      var current=this._odooDoc||{};
+      var payload={
+        companyId:(this.company&&this.company.id)||'',
+        warehouseId:warehouseId,
+        partnerId:partnerId,
+        docType:DOC_TYPES[type],
+        documentNo:current.docNumber||'',
+        documentDate:document.getElementById('od-date').value,
+        notes:document.getElementById('od-notes').value,
+        items:lines.map(function(line){
+          return{
+            productId:line.productId,
+            unit:line.unit||'copë',
+            coefficient:Number(line.coefficient)||1,
+            quantity:Number(line.quantity),
+            freeQuantity:Number(line.freeQty)||0,
+            unitPrice:Number(line.unitPrice)||0,
+            vatRate:line.applyVat===false?0:(Number(line.vatRate)||0)
+          };
+        })
+      };
+      if(!payload.companyId)throw new Error('Nuk ka kompani aktive.');
+      var saved=camel(await Cloud.request(current.id?'/api/documents/'+encodeURIComponent(current.id):'/api/documents',{
+        method:current.id?'PATCH':'POST',
+        body:payload
+      }));
+      this.toast('Dokumenti u ruajt: '+(saved.documentNo||''));
+      await Cloud.refresh();
+      this.navigate(this._odooListView(type));
+    }catch(error){
+      this.toast(error.message||String(error),'error');
+    }
+  };
+}
 })(window);
 /* SG_PHASE95_COMBO_SELECTION_COMMIT_END */
