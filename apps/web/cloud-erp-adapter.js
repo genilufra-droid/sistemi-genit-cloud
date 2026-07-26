@@ -203,10 +203,12 @@
     var lines = (x.items || []).map(function (item) {
       var i = camel(item); return { id:i.id, productId:i.productId, productName:i.description || i.productName || '', unit:i.unit, coefficient:num(i.coefficient || 1), quantity:num(i.quantity), freeQty:num(i.freeQuantity), unitPrice:num(i.unitPrice), vatRate:num(i.vatRate), applyVat:num(i.vatRate) > 0, baseAmount:num(i.lineNet), vatAmount:num(i.lineVat), totalAmount:num(i.lineTotal) };
     });
+    var quantity = lines.reduce(function (total, line) { return total + num(line.quantity); }, 0);
     return {
       id:x.id, companyId:x.companyId, warehouseId:x.warehouseId, partnerId:x.partnerId, docType:x.docType,
-      docNumber:x.documentNo, date:x.documentDate, status:x.status === 'CONFIRMED' ? 'POSTED' : x.status,
-      notes:x.notes || '', totalNet:num(x.totalNet), vatAmount:num(x.totalVat), totalAmount:num(x.totalAmount), lines:lines,
+      docNumber:x.documentNo, date:x.documentDate,
+      status:x.status === 'CONFIRMED' && ['PURCHASE_RECEIPT','DELIVERY_NOTE','PURCHASE_INVOICE','SALES_INVOICE'].indexOf(x.docType) >= 0 ? 'POSTED' : x.status,
+      notes:x.notes || '', quantity:quantity, totalNet:num(x.totalNet), vatAmount:num(x.totalVat), totalAmount:num(x.totalAmount), lines:lines,
       supplierId:/^PURCHASE_/.test(x.docType) ? x.partnerId : null, supplierName:/^PURCHASE_/.test(x.docType) ? (x.partnerName || '') : '',
       customerId:/^(SALES_|DELIVERY_)/.test(x.docType) ? x.partnerId : null, customerName:/^(SALES_|DELIVERY_)/.test(x.docType) ? (x.partnerName || '') : '',
       createdAt:x.createdAt, updatedAt:x.updatedAt, cloudVersion:x.version || 1
