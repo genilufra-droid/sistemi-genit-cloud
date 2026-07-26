@@ -389,6 +389,24 @@
       await global.CloudERP.refresh(); this.navigate('products');
     } catch (error) { this.toast(error.message || String(error), 'error'); }
   };
+  App.deleteMasterRecord = async function (kind, id) {
+    try {
+      Auth.requirePermission('masters.manage');
+      var isProduct = kind === 'product';
+      var isPartner = kind === 'supplier' || kind === 'customer';
+      if (!isProduct && !isPartner) throw new Error('Ky lloj regjistri nuk mund të fshihet nga Cloud.');
+      var list = isProduct ? this.data.products : (kind === 'supplier' ? this.data.suppliers : this.data.customers);
+      var record = (list || []).find(function (row) { return row.id === id; });
+      if (!record) throw new Error('Regjistri nuk u gjet në listën online.');
+      if (!global.confirm('Fshi përgjithmonë “' + (record.name || record.code || id) + '”?')) return;
+      await request((isProduct ? '/api/products/' : '/api/partners/') + encodeURIComponent(id), { method:'DELETE' });
+      this.toast('Regjistri u fshi.');
+      await global.CloudERP.refresh();
+      this.navigate(isProduct ? 'products' : 'partners');
+    } catch (error) {
+      this.toast(error.message || String(error), 'error');
+    }
+  };
 
   Auth.bootstrap=bootstrap; Auth.login=login; Auth.logout=logout; Auth.getCurrentUser=function(){return currentUser;};
   Auth.hasPermission=hasPermission; Auth.requirePermission=function(permission){if(!hasPermission(permission))throw new Error('Nuk keni leje për këtë veprim.');return true;}; Auth.canView=canView;
