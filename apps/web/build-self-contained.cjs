@@ -42,6 +42,7 @@ const PATCHES = [
   'patch-phase81-sample-search-create.cjs',
   'patch-phase82-global-search-document-actions.cjs',
   'patch-phase91-professional-documents.cjs',
+  'patch-phase92-universal-actions.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -65,6 +66,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE81_SAMPLE_SEARCH_CREATE_START',
   'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
   'SG_PHASE91_PROFESSIONAL_DOCUMENTS_START',
+  'SG_PHASE92_UNIVERSAL_ACTIONS_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -127,6 +129,9 @@ try {
   }
   if (html.lastIndexOf('SG_PHASE91_PROFESSIONAL_DOCUMENTS_START') < html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START')) {
     throw new Error('Phase 9.1 duhet të jetë pas Phase 8.2.');
+  }
+  if (html.lastIndexOf('SG_PHASE92_UNIVERSAL_ACTIONS_START') < html.lastIndexOf('SG_PHASE91_PROFESSIONAL_DOCUMENTS_START')) {
+    throw new Error('Phase 9.2 duhet të jetë pas Phase 9.1.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
