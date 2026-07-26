@@ -41,6 +41,14 @@ const PATCHES = [
   'patch-phase80-document-workspace-help.cjs',
   'patch-phase81-sample-search-create.cjs',
   'patch-phase82-global-search-document-actions.cjs',
+  'patch-phase83-real-document-links.cjs',
+  // Phase 8.4 remains disabled because attachments are stored only in the
+  // current browser's IndexedDB and therefore are not multi-device/cloud data.
+  'patch-phase85-professional-document-templates.cjs',
+  'patch-phase86-exact-document-layouts.cjs',
+  'patch-phase87-direct-real-document-tab.cjs',
+  'patch-phase88-direct-document-renderer.cjs',
+  'patch-phase89-clean-document-tab.cjs',
   'patch-phase91-professional-documents.cjs',
   'patch-phase92-universal-actions.cjs',
   'patch-phase94-partner-id-resolution.cjs',
@@ -67,6 +75,12 @@ const REQUIRED_MARKERS = [
   'SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START',
   'SG_PHASE81_SAMPLE_SEARCH_CREATE_START',
   'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
+  'SG_PHASE83_REAL_DOCUMENT_LINKS_START',
+  'SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START',
+  'SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START',
+  'SG_PHASE87_DIRECT_REAL_DOCUMENT_TAB_START',
+  'SG_PHASE88_DIRECT_DOCUMENT_RENDERER_START',
+  'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
   'SG_PHASE91_PROFESSIONAL_DOCUMENTS_START',
   'SG_PHASE92_UNIVERSAL_ACTIONS_START',
   'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
@@ -131,17 +145,23 @@ try {
   if (html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START') < html.lastIndexOf('SG_PHASE81_SAMPLE_SEARCH_CREATE_START')) {
     throw new Error('Phase 8.2 duhet të jetë pas Phase 8.1.');
   }
-  if (html.lastIndexOf('SG_PHASE91_PROFESSIONAL_DOCUMENTS_START') < html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START')) {
-    throw new Error('Phase 9.1 duhet të jetë pas Phase 8.2.');
-  }
-  if (html.lastIndexOf('SG_PHASE92_UNIVERSAL_ACTIONS_START') < html.lastIndexOf('SG_PHASE91_PROFESSIONAL_DOCUMENTS_START')) {
-    throw new Error('Phase 9.2 duhet të jetë pas Phase 9.1.');
-  }
-  if (html.lastIndexOf('SG_PHASE94_PARTNER_ID_RESOLUTION_START') < html.lastIndexOf('SG_PHASE92_UNIVERSAL_ACTIONS_START')) {
-    throw new Error('Phase 9.4 duhet të jetë pas Phase 9.2.');
-  }
-  if (html.lastIndexOf('SG_PHASE95_COMBO_SELECTION_COMMIT_START') < html.lastIndexOf('SG_PHASE94_PARTNER_ID_RESOLUTION_START')) {
-    throw new Error('Phase 9.5 duhet të jetë pas Phase 9.4.');
+  const finalPhases = [
+    'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
+    'SG_PHASE83_REAL_DOCUMENT_LINKS_START',
+    'SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START',
+    'SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START',
+    'SG_PHASE87_DIRECT_REAL_DOCUMENT_TAB_START',
+    'SG_PHASE88_DIRECT_DOCUMENT_RENDERER_START',
+    'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
+    'SG_PHASE91_PROFESSIONAL_DOCUMENTS_START',
+    'SG_PHASE92_UNIVERSAL_ACTIONS_START',
+    'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
+    'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
+  ];
+  for (let i = 1; i < finalPhases.length; i += 1) {
+    if (html.lastIndexOf(finalPhases[i]) < html.lastIndexOf(finalPhases[i - 1])) {
+      throw new Error(`${finalPhases[i]} duhet të jetë pas ${finalPhases[i - 1]}.`);
+    }
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);

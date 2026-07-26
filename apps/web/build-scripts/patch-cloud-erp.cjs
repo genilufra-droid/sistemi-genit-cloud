@@ -20,7 +20,11 @@ const js = fs.readFileSync(jsPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
 const apiUrl = String(process.env.VITE_API_URL || process.env.GENIT_API_URL || '').replace(/\/+$/, '');
 const requiredEnv = process.env.GENIT_CLOUD_REQUIRED;
-const required = requiredEnv == null || requiredEnv === '' ? Boolean(apiUrl) : String(requiredEnv).toLowerCase() !== 'false';
+const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID);
+const required = requiredEnv == null || requiredEnv === '' ? (onRailway || Boolean(apiUrl)) : String(requiredEnv).toLowerCase() !== 'false';
+if (required && !apiUrl) {
+  throw new Error('VITE_API_URL mungon. Vendos domain-in publik të genit-api te Variables e shërbimit genit-web.');
+}
 const config = JSON.stringify({ apiUrl, required, build: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'local' }).replace(/</g, '\\u003c');
 const block = `${start}\n<style id="sg-cloud-erp-adapter-style">\n${css}\n</style>\n<script id="sg-cloud-erp-config">window.__GENIT_CLOUD_CONFIG__=${config};</script>\n<script id="sg-cloud-erp-adapter-script">\n${js}\n</script>\n${end}`;
 
