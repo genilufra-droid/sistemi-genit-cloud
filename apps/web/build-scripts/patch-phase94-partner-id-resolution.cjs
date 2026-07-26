@@ -1,0 +1,15 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const root=process.cwd();
+const indexPath=path.join(root,'index.html');
+const scriptPath=path.join(root,'phase94-partner-id-resolution.js');
+const marker='SG_PHASE94_PARTNER_ID_RESOLUTION_START';
+if(!fs.existsSync(indexPath))throw new Error('Mungon index.html');
+if(!fs.existsSync(scriptPath))throw new Error('Mungon phase94-partner-id-resolution.js');
+let html=fs.readFileSync(indexPath,'utf8');
+const js=fs.readFileSync(scriptPath,'utf8');
+html=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,block=>block.includes(marker)?'':block);
+html+=`\n<script>\n${js}\n</script>\n`;
+fs.writeFileSync(indexPath,html);
+console.log('Phase 9.4 partner ID resolution injected.');
