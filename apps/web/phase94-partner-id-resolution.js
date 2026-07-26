@@ -1,0 +1,18 @@
+/* SG_PHASE94_PARTNER_ID_RESOLUTION_START */
+(function(global){
+'use strict';
+if(global.__SG_PHASE94_PARTNER_ID_RESOLUTION__)return;global.__SG_PHASE94_PARTNER_ID_RESOLUTION__=true;
+var App=global.App||{};
+function norm(v){var s=String(v||'').toLocaleLowerCase('sq-AL');if(s.normalize)s=s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');return s.replace(/ë/g,'e').replace(/ç/g,'c').replace(/[^a-z0-9]+/g,' ').trim()}
+function list(){var d=App.data||{},out=[];['suppliers','clients','customers','partners','farmers'].forEach(function(k){if(Array.isArray(d[k]))out=out.concat(d[k])});return out}
+function nameOf(x){return x&&String(x.name||x.displayName||x.companyName||x.fullName||x.supplierName||x.clientName||'')}
+function idOf(x){return x&&(x.id||x.uuid||x.partnerId||x.supplierId||x.clientId||x.customerId)}
+function findByName(name){var n=norm(name);if(!n)return null;var all=list(),exact=all.find(function(x){return norm(nameOf(x))===n});if(exact)return exact;var starts=all.filter(function(x){return norm(nameOf(x)).indexOf(n)===0});return starts.length===1?starts[0]:null}
+function visiblePartnerText(){var labels=[].slice.call(document.querySelectorAll('label'));for(var i=0;i<labels.length;i++){var t=norm(labels[i].textContent);if(!/(furnitor|klient|partner)/.test(t))continue;var box=labels[i].closest('.field,.form-group,.sg71-field,div')||labels[i].parentElement;if(!box)continue;var input=box.querySelector('input,select');if(input&&input.value)return input.options&&input.selectedIndex>=0?input.options[input.selectedIndex].textContent:input.value}return''}
+function patchObject(obj){if(!obj||typeof obj!=='object')return obj;var name=obj.supplierName||obj.partnerName||obj.clientName||obj.customerName||visiblePartnerText();var match=findByName(name);if(match){var id=idOf(match);if(id){if(!obj.partnerId)obj.partnerId=id;if(!obj.supplierId&&/(supplier|furnitor)/.test(norm(nameOf(match)+' '+(match.type||''))))obj.supplierId=id;if(!obj.clientId&&/(client|klient|customer)/.test(norm(nameOf(match)+' '+(match.type||''))))obj.clientId=id;if(!obj.customerId&&obj.clientId)obj.customerId=obj.clientId}}Object.keys(obj).forEach(function(k){var v=obj[k];if(v&&typeof v==='object')patchObject(v)});return obj}
+var nativeFetch=global.fetch;if(typeof nativeFetch==='function'){global.fetch=function(input,init){try{if(init&&typeof init.body==='string'&&/application\/json/i.test(String((init.headers&&((init.headers['Content-Type']||init.headers['content-type'])))||''))){var data=JSON.parse(init.body);patchObject(data);init=Object.assign({},init,{body:JSON.stringify(data)})}}catch(e){console.warn('Phase94 partner resolution skipped',e)}return nativeFetch.call(this,input,init)}}
+function syncInputs(){var text=visiblePartnerText(),m=findByName(text);if(!m)return;var id=idOf(m);if(!id)return;[].slice.call(document.querySelectorAll('input,select')).forEach(function(el){var key=norm([el.name,el.id,el.dataset&&el.dataset.field].join(' '));if(/partnerid|supplierid|furnitorid|clientid|customerid/.test(key)){el.value=id;el.dataset.selectedId=id;el.dispatchEvent(new Event('change',{bubbles:true}))}})}
+document.addEventListener('click',function(e){var b=e.target.closest('button,[role="button"]');if(!b)return;var t=norm(b.textContent||b.title||'');if(/^(ruaj|regjistro|konfirmo|save)/.test(t))syncInputs()},true);
+global.SGPhase94={findByName:findByName,patchObject:patchObject,syncInputs:syncInputs};
+})(window);
+/* SG_PHASE94_PARTNER_ID_RESOLUTION_END */
