@@ -22,8 +22,11 @@ function addStyles(){
  .sg75-table-wrap th,.sg76-table th,.sg75-doc th,.modal-content th,#modal-box th{color:#0f172a!important;background:#e2e8f0!important}
  .sg75-table-wrap td,.sg76-table td,.sg75-doc td,.modal-content td,#modal-box td{color:#0f172a!important;background:#fff!important}
  .sg75-table-wrap td a,.sg76-table td a,.sg75-doc td a,.modal-content td a,#modal-box td a{color:#075985!important}
- .sg75-add,[data-create],button[class*="add" i],button[title*="shto" i]{display:inline-flex!important;visibility:visible!important;opacity:1!important}
- @media(max-width:720px){.sg82-action{padding:6px}.sg82-actions{min-width:0}}
+ .sg75-add,[data-create],button[class*="add" i],button[title*="shto" i],button[aria-label*="shto" i]{display:inline-flex!important;visibility:visible!important;opacity:1!important}
+ .sg82-empty-add{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-top:6px;border:1px dashed #94a3b8;border-radius:8px;background:#f8fafc;color:#334155!important}
+ .sg82-empty-add button{display:inline-flex!important;align-items:center;justify-content:center;gap:6px;border:1px solid #2563eb;background:#2563eb;color:#fff!important;border-radius:7px;padding:7px 11px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}
+ .sg82-empty-add button:hover{background:#1d4ed8}
+ @media(max-width:720px){.sg82-action{padding:6px}.sg82-actions{min-width:0}.sg82-empty-add{align-items:stretch;flex-direction:column}.sg82-empty-add button{width:100%}}
  `;
  document.head.appendChild(style);
 }
@@ -66,9 +69,50 @@ function enhanceTable(table){
  }));
 }
 
-function scan(root=document){root.querySelectorAll?.('table').forEach(enhanceTable);}
+function isAddControl(el){
+ if(!el||el.disabled)return false;
+ const text=actionText(el);
+ return /(^|\s)(shto|krijo|i ri|e re|add|create|new)(\s|$)/.test(text)||el.matches('[data-create],.sg75-add,button[class*="add" i],a[class*="add" i]');
+}
+function findNearestAddControl(node){
+ const scopes=[];
+ let p=node?.parentElement;
+ while(p&&scopes.length<7){scopes.push(p);p=p.parentElement;}
+ scopes.push(document);
+ for(const scope of scopes){
+   const candidates=[...scope.querySelectorAll('button,a,[role="button"],[data-create]')].filter(el=>!el.closest('.sg82-empty-add')&&isAddControl(el));
+   const visible=candidates.find(el=>{const s=getComputedStyle(el);return s.display!=='none'&&s.visibility!=='hidden';});
+   if(visible)return visible;
+   if(candidates[0])return candidates[0];
+ }
+ return null;
+}
+function emptyResultText(el){
+ const t=norm(el.textContent||'');
+ return /nuk u gjet|asnje rezultat|nuk ka rezultat|no results|not found/.test(t);
+}
+function enhanceEmptyResult(el){
+ if(!el||el.dataset.sg82Empty==='1'||!emptyResultText(el))return;
+ if(el.closest('.sg82-empty-add'))return;
+ el.dataset.sg82Empty='1';
+ const addControl=findNearestAddControl(el);
+ if(!addControl)return;
+ const box=document.createElement('div');box.className='sg82-empty-add';
+ const msg=document.createElement('span');msg.textContent='Nuk u gjet rezultat. Mund të shtosh një rekord të ri.';
+ const btn=document.createElement('button');btn.type='button';btn.textContent='+ Shto';
+ btn.addEventListener('click',(e)=>{e.preventDefault();e.stopPropagation();addControl.click();});
+ box.append(msg,btn);
+ el.insertAdjacentElement('afterend',box);
+}
+function scanEmptyResults(root=document){
+ root.querySelectorAll?.('div,li,td,p,span').forEach(el=>{if(emptyResultText(el))enhanceEmptyResult(el);});
+}
+function scan(root=document){
+ root.querySelectorAll?.('table').forEach(enhanceTable);
+ scanEmptyResults(root);
+}
 
 addStyles();scan();
 let queued=false;const observer=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;scan();});});observer.observe(document.documentElement,{subtree:true,childList:true});
-window.SGPhase82={scan,enhanceTable};
+window.SGPhase82={scan,enhanceTable,scanEmptyResults};
 })();
