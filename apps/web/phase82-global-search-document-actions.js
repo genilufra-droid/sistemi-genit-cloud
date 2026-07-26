@@ -23,10 +23,10 @@ function addStyles(){
  .sg75-table-wrap td,.sg76-table td,.sg75-doc td,.modal-content td,#modal-box td{color:#0f172a!important;background:#fff!important}
  .sg75-table-wrap td a,.sg76-table td a,.sg75-doc td a,.modal-content td a,#modal-box td a{color:#075985!important}
  .sg75-add,[data-create],button[class*="add" i],button[title*="shto" i],button[aria-label*="shto" i]{display:inline-flex!important;visibility:visible!important;opacity:1!important}
- .sg82-empty-add{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-top:6px;border:1px dashed #94a3b8;border-radius:8px;background:#f8fafc;color:#334155!important}
- .sg82-empty-add button{display:inline-flex!important;align-items:center;justify-content:center;gap:6px;border:1px solid #2563eb;background:#2563eb;color:#fff!important;border-radius:7px;padding:7px 11px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}
- .sg82-empty-add button:hover{background:#1d4ed8}
- @media(max-width:720px){.sg82-action{padding:6px}.sg82-actions{min-width:0}.sg82-empty-add{align-items:stretch;flex-direction:column}.sg82-empty-add button{width:100%}}
+ .sg82-inline-create{display:flex!important;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:9px 10px;border:0;border-top:1px solid #dbeafe;background:#eff6ff;color:#1e3a8a!important;font:inherit;font-weight:700;cursor:pointer;text-align:left}
+ .sg82-inline-create:hover{background:#dbeafe}
+ .sg82-inline-create strong{color:#1d4ed8!important}
+ @media(max-width:720px){.sg82-action{padding:6px}.sg82-actions{min-width:0}}
  `;
  document.head.appendChild(style);
 }
@@ -38,29 +38,22 @@ function showToast(msg){const el=document.createElement('div');el.className='sg8
 function actionText(el){return norm([el.textContent,el.getAttribute('title'),el.getAttribute('aria-label'),el.getAttribute('onclick'),el.getAttribute('href'),el.dataset?.action].filter(Boolean).join(' '));}
 function originalControls(row){return [...row.querySelectorAll('a,button,[role="button"]')].filter(el=>!el.closest('.sg82-actions'));}
 function findControl(controls,pattern){return controls.find(el=>pattern.test(actionText(el)));}
-function invoke(el,row){
- if(el){el.click();return true;}
- if(row.hasAttribute('onclick')){row.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));return true;}
- return false;
-}
+function invoke(el,row){if(el){el.click();return true;}if(row.hasAttribute('onclick')){row.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));return true;}return false;}
 
 function enhanceTable(table){
  if(!table||table.dataset.sg82==='1')return;
  const headers=tableHeaders(table);if(!likelyDocumentTable(headers))return;
  table.dataset.sg82='1';
  [...(table.tBodies||[])].forEach(tb=>[...tb.rows].forEach(row=>{
-   if(row.dataset.sg82==='1')return;
-   row.dataset.sg82='1';
+   if(row.dataset.sg82==='1')return;row.dataset.sg82='1';
    const controls=originalControls(row);
    const edit=findControl(controls,/(^|\s)(edit|edito|ndrysho|modify|update)(\s|$)/);
    const del=findControl(controls,/(^|\s)(delete|fshi|anulo|cancel)(\s|$)/);
    const view=findControl(controls,/(^|\s)(view|shiko|hap|open|document|fatur|flet[eë]|lot)(\s|$)/)||controls.find(el=>el.tagName==='A'||el.hasAttribute('onclick'));
-   const canView=!!view||row.hasAttribute('onclick');
-   if(!canView&&!edit&&!del)return;
+   const canView=!!view||row.hasAttribute('onclick');if(!canView&&!edit&&!del)return;
    let actionIndex=headers.findIndex(h=>/^veprime$/i.test(h));
    if(actionIndex<0&&table.tHead?.rows?.[0]){const th=document.createElement('th');th.textContent='Veprime';table.tHead.rows[0].appendChild(th);actionIndex=table.tHead.rows[0].cells.length-1;headers.push('Veprime');}
-   let cell=row.cells[actionIndex];if(!cell)cell=row.insertCell(-1);
-   if(cell.querySelector('.sg82-actions'))return;
+   let cell=row.cells[actionIndex];if(!cell)cell=row.insertCell(-1);if(cell.querySelector('.sg82-actions'))return;
    const box=document.createElement('div');box.className='sg82-actions';
    if(canView){const b=document.createElement('button');b.type='button';b.className='sg82-action';b.textContent='Shiko';b.addEventListener('click',(e)=>{e.stopPropagation();if(!invoke(view,row))showToast('Dokumenti real nuk ka ende handler hapjeje.');});box.appendChild(b);}
    if(edit){const b=document.createElement('button');b.type='button';b.className='sg82-action';b.textContent='Edito';b.addEventListener('click',(e)=>{e.stopPropagation();edit.click();});box.appendChild(b);}
@@ -69,50 +62,52 @@ function enhanceTable(table){
  }));
 }
 
-function isAddControl(el){
- if(!el||el.disabled)return false;
- const text=actionText(el);
- return /(^|\s)(shto|krijo|i ri|e re|add|create|new)(\s|$)/.test(text)||el.matches('[data-create],.sg75-add,button[class*="add" i],a[class*="add" i]');
+function associatedSelect(input){
+ const id=input.getAttribute('aria-controls');
+ const wrapper=input.closest('.sg82-combo,.form-group,.field,.input-group,.select-wrapper,[class*="select" i]')||input.parentElement;
+ return wrapper?.querySelector('select')||input.previousElementSibling?.matches?.('select')&&input.previousElementSibling||input.nextElementSibling?.matches?.('select')&&input.nextElementSibling||null;
 }
-function findNearestAddControl(node){
- const scopes=[];
- let p=node?.parentElement;
- while(p&&scopes.length<7){scopes.push(p);p=p.parentElement;}
- scopes.push(document);
- for(const scope of scopes){
-   const candidates=[...scope.querySelectorAll('button,a,[role="button"],[data-create]')].filter(el=>!el.closest('.sg82-empty-add')&&isAddControl(el));
-   const visible=candidates.find(el=>{const s=getComputedStyle(el);return s.display!=='none'&&s.visibility!=='hidden';});
-   if(visible)return visible;
-   if(candidates[0])return candidates[0];
- }
- return null;
+function resultMenu(input){
+ const controls=input.getAttribute('aria-controls');
+ if(controls){const el=document.getElementById(controls);if(el)return el;}
+ const wrapper=input.closest('.sg82-combo,.form-group,.field,.input-group,.select-wrapper,[class*="select" i]')||input.parentElement;
+ return wrapper?.querySelector('.sg82-results,[role="listbox"],.dropdown-menu,.autocomplete-results,.choices__list--dropdown')||null;
 }
-function emptyResultText(el){
- const t=norm(el.textContent||'');
- return /nuk u gjet|asnje rezultat|nuk ka rezultat|no results|not found/.test(t);
+function removeLegacyEmptyAdds(root=document){root.querySelectorAll?.('.sg82-empty-add').forEach(el=>el.remove());}
+function refreshInlineCreate(input){
+ const select=associatedSelect(input);if(!select)return;
+ const menu=resultMenu(input);if(!menu)return;
+ menu.querySelectorAll('.sg82-inline-create').forEach(el=>el.remove());
+ const typed=String(input.value||'').trim();if(!typed)return;
+ const exists=[...(select.options||[])].some(o=>norm(o.textContent)===norm(typed)||norm(o.value)===norm(typed));
+ if(exists)return;
+ const visibleOptions=[...menu.querySelectorAll('[role="option"],button,li,.sg82-option')].filter(el=>!el.classList.contains('sg82-inline-create')&&norm(el.textContent)===norm(typed));
+ if(visibleOptions.length)return;
+ const btn=document.createElement('button');btn.type='button';btn.className='sg82-inline-create';btn.innerHTML=`<span>Shto të riun: <strong></strong></span><span>+ Shto</span>`;btn.querySelector('strong').textContent=typed;
+ btn.addEventListener('mousedown',(e)=>{
+   e.preventDefault();e.stopPropagation();
+   let option=[...(select.options||[])].find(o=>norm(o.textContent)===norm(typed)||norm(o.value)===norm(typed));
+   if(!option){option=new Option(typed,typed,true,true);select.add(option);}
+   select.value=option.value;input.value=typed;
+   select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));
+   btn.remove();menu.hidden=true;showToast(`U shtua: ${typed}`);
+ });
+ menu.appendChild(btn);
 }
-function enhanceEmptyResult(el){
- if(!el||el.dataset.sg82Empty==='1'||!emptyResultText(el))return;
- if(el.closest('.sg82-empty-add'))return;
- el.dataset.sg82Empty='1';
- const addControl=findNearestAddControl(el);
- if(!addControl)return;
- const box=document.createElement('div');box.className='sg82-empty-add';
- const msg=document.createElement('span');msg.textContent='Nuk u gjet rezultat. Mund të shtosh një rekord të ri.';
- const btn=document.createElement('button');btn.type='button';btn.textContent='+ Shto';
- btn.addEventListener('click',(e)=>{e.preventDefault();e.stopPropagation();addControl.click();});
- box.append(msg,btn);
- el.insertAdjacentElement('afterend',box);
-}
-function scanEmptyResults(root=document){
- root.querySelectorAll?.('div,li,td,p,span').forEach(el=>{if(emptyResultText(el))enhanceEmptyResult(el);});
+function enhanceSearchInput(input){
+ if(!input||input.dataset.sg82Create==='1')return;
+ if(!associatedSelect(input))return;
+ input.dataset.sg82Create='1';
+ input.addEventListener('input',()=>requestAnimationFrame(()=>refreshInlineCreate(input)));
+ input.addEventListener('focus',()=>requestAnimationFrame(()=>refreshInlineCreate(input)));
 }
 function scan(root=document){
+ removeLegacyEmptyAdds(root);
  root.querySelectorAll?.('table').forEach(enhanceTable);
- scanEmptyResults(root);
+ root.querySelectorAll?.('input[type="search"],input[role="combobox"],.sg82-combo-input').forEach(enhanceSearchInput);
 }
 
 addStyles();scan();
 let queued=false;const observer=new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;scan();});});observer.observe(document.documentElement,{subtree:true,childList:true});
-window.SGPhase82={scan,enhanceTable,scanEmptyResults};
+window.SGPhase82={scan,enhanceTable,refreshInlineCreate};
 })();
