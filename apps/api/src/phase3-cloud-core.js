@@ -1,3 +1,4 @@
+// Railway API deployment trigger: 2026-07-27T00:50 Europe/Tirane
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
