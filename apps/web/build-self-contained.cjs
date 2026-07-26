@@ -44,6 +44,7 @@ const PATCHES = [
   'patch-phase91-professional-documents.cjs',
   'patch-phase92-universal-actions.cjs',
   'patch-phase94-partner-id-resolution.cjs',
+  'patch-phase95-combo-selection-commit.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -69,6 +70,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE91_PROFESSIONAL_DOCUMENTS_START',
   'SG_PHASE92_UNIVERSAL_ACTIONS_START',
   'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
+  'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -137,6 +139,9 @@ try {
   }
   if (html.lastIndexOf('SG_PHASE94_PARTNER_ID_RESOLUTION_START') < html.lastIndexOf('SG_PHASE92_UNIVERSAL_ACTIONS_START')) {
     throw new Error('Phase 9.4 duhet të jetë pas Phase 9.2.');
+  }
+  if (html.lastIndexOf('SG_PHASE95_COMBO_SELECTION_COMMIT_START') < html.lastIndexOf('SG_PHASE94_PARTNER_ID_RESOLUTION_START')) {
+    throw new Error('Phase 9.5 duhet të jetë pas Phase 9.4.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
