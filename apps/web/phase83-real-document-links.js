@@ -20,13 +20,25 @@ const KIND_PATTERNS=[
  ['location',/(lokacion|vendndodhje)/i]
 ];
 const DOC_CODE_RE=/(?:FH|FD|FT|FB|FS|FAT|INV|BL|SH|UP|WO|LOT|MOSTER|FUSHATE|MANDAT|MA|MP|TR|DOC)[-_\s]?\d{2,4}[-_/]\d+/i;
+const UUID_RE=/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
 
 function normal(v){return String(v??'').trim();}
 function codeFromText(text){return normal(text).match(DOC_CODE_RE)?.[0]?.replace(/\s+/g,'')||'';}
+function uuidFromRow(row){
+ const all=[...row?.querySelectorAll?.('[onclick],[data-document-id],[data-doc-id],[data-record-id],[data-entity-id],[data-id]')||[]];
+ for(const el of all){
+  const d=el.dataset||{};
+  const candidates=[d.documentId,d.docId,d.recordId,d.entityId,d.id,el.getAttribute?.('onclick'),el.getAttribute?.('href')];
+  for(const value of candidates){const hit=normal(value).match(UUID_RE)?.[0];if(hit)return hit;}
+ }
+ return normal(row?.outerHTML).match(UUID_RE)?.[0]||'';
+}
 function rowIdentity(row){
+ const cached=row?.dataset?.sg83DocumentId;if(cached)return cached;
  const ds=row?.dataset||{};
  const direct=ds.documentId||ds.docId||ds.recordId||ds.entityId||ds.id;
- if(direct)return normal(direct);
+ if(direct&&UUID_RE.test(direct))return normal(direct);
+ const uuid=uuidFromRow(row);if(uuid)return uuid;
  const node=row?.querySelector?.('[data-document-id],[data-doc-id],[data-record-id],[data-entity-id],[data-id]');
  if(node){const d=node.dataset||{};const id=d.documentId||d.docId||d.recordId||d.entityId||d.id;if(id)return normal(id);}
  const href=row?.querySelector?.('a[href*="sgdocId="]')?.href;
@@ -95,9 +107,7 @@ function captureUniversalOpen(e){
  const cell=target.closest('td,th'),table=row.closest('table'),hs=headers(table),header=hs[cell?.cellIndex??0]||'';
  const shouldOpen=isViewControl(target)||isDocumentHeader(header)||!!target.closest('[onclick*="sg72OpenDocument"],[onclick*="OpenDocument"]');
  if(!shouldOpen)return;
- if(openRowDocument(row,target)){
-   e.preventDefault();e.stopImmediatePropagation();
- }
+ if(openRowDocument(row,target)){e.preventDefault();e.stopImmediatePropagation();}
 }
 function addStyle(){if(document.getElementById('sg83-style'))return;const s=document.createElement('style');s.id='sg83-style';s.textContent='.sg83-real-doc{color:#075985;text-decoration:underline;text-underline-offset:3px;font-weight:700;cursor:pointer}.sg83-real-doc:hover{color:#0c4a6e}';document.head.appendChild(s);}
 function scan(root=document){root.querySelectorAll?.('table').forEach(enhanceTable);}
