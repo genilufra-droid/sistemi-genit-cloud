@@ -41,7 +41,6 @@ const PATCHES = [
   'patch-phase80-document-workspace-help.cjs',
   'patch-phase81-sample-search-create.cjs',
   'patch-phase82-global-search-document-actions.cjs',
-  'patch-phase89-clean-document-tab.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -64,7 +63,6 @@ const REQUIRED_MARKERS = [
   'SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START',
   'SG_PHASE81_SAMPLE_SEARCH_CREATE_START',
   'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
-  'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -124,9 +122,6 @@ try {
   }
   if (html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START') < html.lastIndexOf('SG_PHASE81_SAMPLE_SEARCH_CREATE_START')) {
     throw new Error('Phase 8.2 duhet të jetë pas Phase 8.1.');
-  }
-  if (html.lastIndexOf('SG_PHASE89_CLEAN_DOCUMENT_TAB_START') < html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START')) {
-    throw new Error('Phase 8.9 duhet të jetë patch-i final pas Phase 8.2.');
   }
 
   fs.copyFileSync(builtIndex, SOURCE_INDEX);
