@@ -2,11 +2,16 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
-const htmlPath=path.join(root,'index.html');
-const jsPath=path.join(root,'phase83-real-document-links.js');
+const webRoot=fs.existsSync(path.join(root,'apps','web','index.html'))
+  ? path.join(root,'apps','web')
+  : root;
+const htmlPath=path.join(webRoot,'index.html');
+const jsPath=path.join(webRoot,'phase83-real-document-links.js');
 const start='<!-- SG_PHASE83_REAL_DOCUMENT_LINKS_PATCH_START -->';
 const end='<!-- SG_PHASE83_REAL_DOCUMENT_LINKS_PATCH_END -->';
 const esc=(value)=>value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+if(!fs.existsSync(htmlPath))throw new Error('Mungon index.html për Phase 8.3: '+htmlPath);
+if(!fs.existsSync(jsPath))throw new Error('Mungon phase83-real-document-links.js: '+jsPath);
 let html=fs.readFileSync(htmlPath,'utf8');
 const js=fs.readFileSync(jsPath,'utf8');
 new Function(js);
