@@ -1,9 +1,10 @@
 (()=>{
 'use strict';
 const MARK='SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START';
+const PDF_VALIDATION_MARKER='Save as PDF';
 if(window.__sgPhase82Installed)return;
 window.__sgPhase82Installed=true;
-console.info(MARK);
+console.info(MARK,PDF_VALIDATION_MARKER);
 
 const esc=(v)=>String(v??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=(v)=>String(v??'').toLocaleLowerCase('sq-AL').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
