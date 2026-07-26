@@ -120,6 +120,48 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       this.toast(error.message||String(error),'error');
     }
   };
+  App.sg95ConfirmCloudDocument=async function(id,type){
+    try{
+      await Cloud.request('/api/documents/'+encodeURIComponent(id)+'/confirm',{method:'POST'});
+      this.toast('Dokumenti u konfirmua.');
+      await Cloud.refresh();
+      this.navigate(this._odooListView(type));
+    }catch(error){
+      this.toast(error.message||String(error),'error');
+    }
+  };
+  var localViewOdooList=App._viewOdooList;
+  App._viewOdooList=async function(type){
+    await localViewOdooList.call(this,type);
+    if(!DOC_TYPES[type])return;
+    var cfg={
+      purchaseRFQ:'purchaseRFQs',
+      purchaseOrder:'purchaseOrders',
+      purchaseReceipt:'purchaseReceipts',
+      salesQuotation:'salesQuotations',
+      salesOrder:'salesOrders',
+      deliveryNote:'deliveryNotes'
+    };
+    var rows=(this.data[cfg[type]]||[]).slice().sort(function(a,b){
+      return String(b.createdAt||b.date||'').localeCompare(String(a.createdAt||a.date||''));
+    });
+    document.querySelectorAll('#odoo-list-table tbody tr').forEach(function(tr,index){
+      var doc=rows[index];
+      if(!doc||doc.status!=='DRAFT')return;
+      var cell=tr.lastElementChild;
+      if(!cell)return;
+      var button=document.createElement('button');
+      button.type='button';
+      button.className='btn btn-green btn-sm';
+      button.textContent='✓ Konfirmo';
+      button.addEventListener('click',function(event){
+        event.preventDefault();
+        event.stopPropagation();
+        App.sg95ConfirmCloudDocument(doc.id,type);
+      });
+      cell.appendChild(button);
+    });
+  };
 }
 })(window);
 /* SG_PHASE95_COMBO_SELECTION_COMMIT_END */
