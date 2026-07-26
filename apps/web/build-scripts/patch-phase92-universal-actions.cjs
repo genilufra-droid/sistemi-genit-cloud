@@ -10,17 +10,21 @@ let html=fs.readFileSync(indexPath,'utf8');
 const js=fs.readFileSync(scriptPath,'utf8');
 const marker='SG_PHASE92_UNIVERSAL_ACTIONS_START';
 
-// Remove every older embedded Phase 9.2 block, regardless of whitespace or formatting.
-html=html.replace(/<script\b[^>]*>[\s\S]*?SG_PHASE92_UNIVERSAL_ACTIONS_START[\s\S]*?<\/script>/gi,'');
+// Remove only script blocks that actually contain the Phase 9.2 marker.
+// Do not use a cross-script regex because it can also remove Phase 9.1.
+html=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,function(block){
+  return block.includes(marker)?'':block;
+});
 
-// Inject once at the absolute end of BODY, therefore after Phase 9.1 and all prior phases.
+// Inject Phase 9.2 once at the final closing BODY tag.
 const tag=`\n<script>\n${js}\n</script>\n`;
 const bodyClose=html.toLowerCase().lastIndexOf('</body>');
 html=bodyClose>=0?html.slice(0,bodyClose)+tag+html.slice(bodyClose):html+tag;
 
 const p91=html.lastIndexOf('SG_PHASE91_PROFESSIONAL_DOCUMENTS_START');
 const p92=html.lastIndexOf(marker);
+if(p91<0)throw new Error('Mungon Phase 9.1 para Phase 9.2');
 if(p92<0)throw new Error('Phase 9.2 nuk u injektua');
-if(p91>=0&&p92<=p91)throw new Error('Phase 9.2 nuk u vendos pas Phase 9.1');
+if(p92<=p91)throw new Error('Phase 9.2 nuk u vendos pas Phase 9.1');
 fs.writeFileSync(indexPath,html);
-console.log('Phase 9.2 universal actions injected after Phase 9.1.');
+console.log('Phase 9.2 universal actions injected safely after Phase 9.1.');
