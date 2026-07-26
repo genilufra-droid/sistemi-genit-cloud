@@ -32,6 +32,11 @@ export async function migratePhase2Documents(db) {
       UNIQUE (tenant_id, company_id, doc_type, document_no)
     );
     ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+    ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS source_document_id UUID REFERENCES business_documents(id) ON DELETE SET NULL;
+    ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS source_document_type VARCHAR(40);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_business_document_conversion
+      ON business_documents(tenant_id,source_document_id,doc_type)
+      WHERE source_document_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS business_document_items (
       id UUID PRIMARY KEY,
@@ -152,6 +157,70 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       emitTenant(req.user.tenant_id,'documents',{action:'updated',id:current.id,docType:current.doc_type});
       res.json(rows[0]);
     } catch(error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
+  });
+
+  app.post('/api/documents/:id/convert', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
+    const client = await pool.connect();
+    try {
+      const targetType = z.enum(DOCUMENT_TYPES).parse(req.body?.targetType);
+      await client.query('BEGIN');
+      const source = await lockDocument(client,req.params.id,req.user.tenant_id);
+      await assertCompanyAccess(req.user,source.company_id,client);
+      if(source.status==='CANCELLED') throw requestError('Dokumenti i anuluar nuk mund të konvertohet.',409);
+      const allowed = {
+        PURCHASE_RFQ:['PURCHASE_ORDER'],
+        PURCHASE_ORDER:['PURCHASE_RECEIPT','PURCHASE_INVOICE'],
+        PURCHASE_RECEIPT:['PURCHASE_INVOICE'],
+        SALES_QUOTE:['SALES_ORDER','SALES_INVOICE'],
+        SALES_ORDER:['DELIVERY_NOTE','SALES_INVOICE'],
+        DELIVERY_NOTE:['SALES_INVOICE'],
+      };
+      if(!(allowed[source.doc_type]||[]).includes(targetType)) {
+        throw requestError(`Konvertimi ${source.doc_type} → ${targetType} nuk lejohet.`,400);
+      }
+      const existing = await client.query(
+        'SELECT * FROM business_documents WHERE tenant_id=$1 AND source_document_id=$2 AND doc_type=$3 LIMIT 1',
+        [req.user.tenant_id,source.id,targetType],
+      );
+      if(existing.rows[0]) {
+        await client.query('COMMIT');
+        return res.json(existing.rows[0]);
+      }
+      const sourceItems = await readItems(client,source.id);
+      if(!sourceItems.length) throw requestError('Dokumenti burim nuk ka artikuj.',409);
+      const id=randomUUID();
+      const documentNo=await nextDocumentNo(client,req.user.tenant_id,source.company_id,targetType);
+      const {rows}=await client.query(`
+        INSERT INTO business_documents(
+          id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,
+          total_net,total_vat,total_amount,created_by,source_document_id,source_document_type
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,'DRAFT',$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[
+        id,req.user.tenant_id,source.company_id,source.warehouse_id,source.partner_id,targetType,documentNo,
+        `Krijuar nga ${source.document_no}${source.notes?` — ${source.notes}`:''}`,
+        source.total_net,source.total_vat,source.total_amount,req.user.id,source.id,source.doc_type,
+      ]);
+      for(const item of sourceItems) {
+        await client.query(`
+          INSERT INTO business_document_items(
+            id,document_id,product_id,description,unit,coefficient,quantity,free_quantity,unit_price,vat_rate,
+            line_net,line_vat,line_total
+          ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[
+          randomUUID(),id,item.product_id,item.description,item.unit,item.coefficient,item.quantity,item.free_quantity,
+          item.unit_price,item.vat_rate,item.line_net,item.line_vat,item.line_total,
+        ]);
+      }
+      await audit({
+        tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONVERT',entityType:'business_document',
+        entityId:id,companyId:source.company_id,
+        metadata:{sourceId:source.id,sourceType:source.doc_type,sourceNo:source.document_no,targetType,documentNo},ip:req.ip,
+      },client);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id,'documents',{action:'converted',id,docType:targetType,sourceId:source.id});
+      res.status(201).json(rows[0]);
+    } catch(error) {
+      await client.query('ROLLBACK');
+      next(error);
+    } finally { client.release(); }
   });
 
   app.post('/api/documents/:id/confirm', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
