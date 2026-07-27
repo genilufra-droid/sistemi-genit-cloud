@@ -231,11 +231,19 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
         convertButton.className='btn '+(completed?'btn-green':'btn-blue')+' btn-sm';
         convertButton.textContent=completed?'✓ '+(conversion.target.indexOf('INVOICE')>=0?'Fatura u krijua':'Dokumenti u krijua'):(created&&conversion.target.indexOf('INVOICE')>=0?'✓ Konfirmo Faturën':conversion.label);
         if(completed)convertButton.disabled=true;
-        convertButton.addEventListener('click',function(event){
+        convertButton.setAttribute('data-document-flow','');
+        convertButton.addEventListener('click',async function(event){
           event.preventDefault();
           event.stopPropagation();
           if(completed)return;
-          App.sg95ConvertCloudDocument(doc.id,type,conversion);
+          var originalText=convertButton.textContent;
+          convertButton.disabled=true;
+          convertButton.textContent='⏳ Duke krijuar…';
+          var result=await App.sg95ConvertCloudTarget(doc.id,doc.docType||DOC_TYPES[type],conversion.target,true);
+          if(!result&&convertButton.isConnected){
+            convertButton.disabled=false;
+            convertButton.textContent=originalText;
+          }
         });
         var visibleCell=tr.cells&&tr.cells.length?tr.cells[0]:cell;
         var flowWrap=visibleCell.querySelector('.sg95-flow-actions');
