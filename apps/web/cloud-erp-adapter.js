@@ -427,14 +427,16 @@
       }
       if (!document) throw new Error('Dokumenti nuk u gjet në listën online.');
       if (document.status !== 'DRAFT') throw new Error('Vetëm dokumenti Draft mund të fshihet. Për dokumentin e konfirmuar përdor Anullo.');
-      if (!global.confirm('Fshi dokumentin Draft “' + (document.docNumber || id) + '”?')) return;
+      if (!global.confirm('Fshi dokumentin Draft “' + (document.docNumber || id) + '”?')) return false;
       await request('/api/documents/' + encodeURIComponent(id), { method:'DELETE' });
       this.closeModal();
       this.toast('Dokumenti Draft u fshi.');
       await global.CloudERP.refresh();
       if (returnView) this.navigate(returnView);
+      return true;
     } catch (error) {
       this.toast(error.message || String(error), 'error');
+      return false;
     }
   };
 
