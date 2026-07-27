@@ -129,7 +129,15 @@ try {
     throw new Error('Build-i nuk prodhoi index.html.');
   }
 
-  const html = fs.readFileSync(builtIndex, 'utf8');
+  let html = fs.readFileSync(builtIndex, 'utf8');
+  // Several legacy phase patchers append scripts after the original closing
+  // tags. Normalize the generated artifact so it remains a valid, repeatable
+  // build input on the next Railway deployment.
+  html = html
+    .replace(/^\s*<\/body>\s*$/gim, '')
+    .replace(/^\s*<\/html>\s*$/gim, '')
+    .trimEnd() + '\n</body>\n</html>\n';
+  fs.writeFileSync(builtIndex, html);
   for (const marker of REQUIRED_MARKERS) {
     if (!html.includes(marker)) throw new Error(`Build-i final nuk përmban ${marker}.`);
   }
