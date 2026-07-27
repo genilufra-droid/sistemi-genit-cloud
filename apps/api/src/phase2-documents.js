@@ -274,6 +274,11 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       res.status(201).json(rows[0]);
     } catch(error) {
       await client.query('ROLLBACK');
+      if(!error.status) {
+        var databaseCode=error.code ? String(error.code) : 'SERVER';
+        var databaseContext=error.constraint || error.column || error.table || '';
+        error.publicMessage=`Konvertimi dështoi [${databaseCode}]${databaseContext?` (${databaseContext})`:''}: ${error.message}`;
+      }
       next(error);
     } finally { client.release(); }
   });
