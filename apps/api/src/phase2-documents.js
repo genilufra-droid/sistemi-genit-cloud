@@ -248,11 +248,11 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         INSERT INTO business_documents(
           id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,
           total_net,total_vat,total_amount,created_by,source_document_id,source_document_type,confirmed_at
-        ) VALUES($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,$8,$9,$10,$11,$12,$13,$14,$15,CASE WHEN $8='CONFIRMED' THEN NOW() ELSE NULL END) RETURNING *`,[
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,$8,$9,$10,$11,$12,$13,$14,$15,CASE WHEN $16::boolean THEN NOW() ELSE NULL END) RETURNING *`,[
         id,req.user.tenant_id,source.company_id,source.warehouse_id,source.partner_id,targetType,documentNo,
         autoConfirm?'CONFIRMED':'DRAFT',
         `Krijuar nga ${source.document_no}${source.notes?` — ${source.notes}`:''}`,
-        source.total_net,source.total_vat,source.total_amount,req.user.id,source.id,source.doc_type,
+        source.total_net,source.total_vat,source.total_amount,req.user.id,source.id,source.doc_type,autoConfirm,
       ]);
       for(const item of sourceItems) {
         await client.query(`
@@ -274,11 +274,6 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       res.status(201).json(rows[0]);
     } catch(error) {
       await client.query('ROLLBACK');
-      if(!error.status) {
-        var databaseCode=error.code ? String(error.code) : 'SERVER';
-        var databaseContext=error.constraint || error.column || error.table || '';
-        error.publicMessage=`Konvertimi dështoi [${databaseCode}]${databaseContext?` (${databaseContext})`:''}: ${error.message}`;
-      }
       next(error);
     } finally { client.release(); }
   });
