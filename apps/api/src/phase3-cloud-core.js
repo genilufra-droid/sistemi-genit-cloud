@@ -217,7 +217,8 @@ export function installPhase3CloudCoreRoutes({
           WHERE sm.tenant_id=$1 AND sm.company_id=ANY($2::uuid[])
           GROUP BY sm.company_id,sm.warehouse_id,sm.product_id,p.code,p.name,p.base_unit ORDER BY p.name`, [req.user.tenant_id, companyIds]),
         client.query(`SELECT d.id,d.tenant_id,d.company_id,d.warehouse_id,d.partner_id,d.doc_type,d.document_no,d.document_date,
-          d.status,d.notes,d.total_net,d.total_vat,d.total_amount,d.created_at,d.updated_at,d.version,
+          d.status,d.notes,d.total_net,d.total_vat,d.total_amount,d.paid_amount,d.remaining_amount,d.payment_status,
+          d.created_at,d.updated_at,d.version,
           d.source_document_id,d.source_document_type,
           bp.name AS partner_name,
           COALESCE(jsonb_agg(jsonb_build_object(
