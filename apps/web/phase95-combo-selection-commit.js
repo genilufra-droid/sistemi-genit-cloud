@@ -135,8 +135,7 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       {target:'PURCHASE_ORDER',type:'purchaseOrder',label:'Krijo Porosi'}
     ],
     purchaseOrder:[
-      {target:'PURCHASE_RECEIPT',type:'purchaseReceipt',label:'Krijo Pranim'},
-      {target:'PURCHASE_INVOICE',type:'purchaseInvoice',label:'Krijo Faturë'}
+      {target:'PURCHASE_RECEIPT',type:'purchaseReceipt',label:'Krijo Pranim'}
     ],
     purchaseReceipt:[
       {target:'PURCHASE_INVOICE',type:'purchaseInvoice',label:'Krijo Faturë'}
@@ -157,7 +156,7 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
     PURCHASE_ORDER:'purchaseOrders',PURCHASE_RECEIPT:'purchaseReceipts',PURCHASE_INVOICE:'purchaseInvoices',
     SALES_ORDER:'salesOrders',DELIVERY_NOTE:'deliveryNotes',SALES_INVOICE:'salesInvoices'
   };
-  App.sg95ConvertCloudDocument=async function(id,sourceType,conversion){
+  App.sg95ConvertCloudDocument=async function(id,sourceType,conversion,openCreated){
     try{
       var created=camel(await Cloud.request('/api/documents/'+encodeURIComponent(id)+'/convert',{
         method:'POST',
@@ -165,12 +164,28 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       }));
       this.toast(conversion.label+': '+(created.documentNo||'u krijua'));
       await Cloud.refresh();
-      if(conversion.type==='purchaseInvoice')this.navigate('purchaseList');
+      if(openCreated&&created.id&&typeof this.openOdooDocument==='function'){
+        await this.openOdooDocument(conversion.target,created.id);
+      }else if(conversion.type==='purchaseInvoice')this.navigate('purchaseList');
       else if(conversion.type==='salesInvoice')this.navigate('salesList');
       else this.navigate(this._odooListView(conversion.type));
+      return created;
     }catch(error){
       this.toast(error.message||String(error),'error');
+      return null;
     }
+  };
+  App.sg95ConvertCloudTarget=function(id,sourceDocType,targetType,openCreated){
+    var sourceKey={
+      PURCHASE_RFQ:'purchaseRFQ',PURCHASE_ORDER:'purchaseOrder',PURCHASE_RECEIPT:'purchaseReceipt',
+      SALES_QUOTE:'salesQuotation',SALES_ORDER:'salesOrder',DELIVERY_NOTE:'deliveryNote'
+    }[String(sourceDocType||'').toUpperCase()];
+    var conversion=(CONVERSIONS[sourceKey]||[]).find(function(item){return item.target===targetType;});
+    if(!conversion){
+      this.toast('Ky hap i dokumentit nuk lejohet.','error');
+      return Promise.resolve(null);
+    }
+    return this.sg95ConvertCloudDocument(id,sourceKey,conversion,openCreated);
   };
   var localViewOdooList=App._viewOdooList;
   App._viewOdooList=async function(type){
@@ -188,7 +203,8 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       return String(b.createdAt||b.date||'').localeCompare(String(a.createdAt||a.date||''));
     });
     document.querySelectorAll('#odoo-list-table tbody tr').forEach(function(tr,index){
-      var doc=rows[index];
+      var rowText=String(tr.textContent||'');
+      var doc=rows.find(function(item){return item.docNumber&&rowText.indexOf(item.docNumber)>=0;})||rows[index];
       if(!doc)return;
       var cell=tr.lastElementChild;
       if(!cell)return;
@@ -220,7 +236,15 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
           if(completed)return;
           App.sg95ConvertCloudDocument(doc.id,type,conversion);
         });
-        cell.appendChild(convertButton);
+        var visibleCell=tr.cells&&tr.cells.length?tr.cells[0]:cell;
+        var flowWrap=visibleCell.querySelector('.sg95-flow-actions');
+        if(!flowWrap){
+          flowWrap=document.createElement('div');
+          flowWrap.className='sg95-flow-actions';
+          flowWrap.style.cssText='display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;min-width:135px';
+          visibleCell.appendChild(flowWrap);
+        }
+        flowWrap.appendChild(convertButton);
       });
     });
   };
