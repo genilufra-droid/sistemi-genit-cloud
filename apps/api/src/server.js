@@ -497,6 +497,43 @@ app.patch('/api/warehouses/:id', authRequired, requireRoles(...ADMIN_ROLES), asy
   res.json(rows[0]);
 }));
 
+app.delete('/api/warehouses/:id', authRequired, requireRoles(...ADMIN_ROLES), asyncRoute(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT * FROM warehouses WHERE id=$1 AND tenant_id=$2 FOR UPDATE',
+      [req.params.id,req.user.tenant_id],
+    );
+    const warehouse = rows[0];
+    if (!warehouse) {
+      const error = new Error('Magazina nuk u gjet.');
+      error.status = 404;
+      throw error;
+    }
+    await assertCompanyAccess(req.user,warehouse.company_id,client);
+    await client.query(
+      'DELETE FROM warehouses WHERE id=$1 AND tenant_id=$2',
+      [warehouse.id,req.user.tenant_id],
+    );
+    await audit({
+      tenantId:req.user.tenant_id,userId:req.user.id,action:'WAREHOUSE_DELETE',
+      entityType:'warehouse',entityId:warehouse.id,companyId:warehouse.company_id,
+      metadata:{name:warehouse.name,code:warehouse.code},ip:req.ip,
+    },client);
+    await client.query('COMMIT');
+    emitTenant(req.user.tenant_id,'warehouses',{action:'deleted',id:warehouse.id});
+    res.json({ok:true,id:warehouse.id,deleted:true});
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error?.code === '23503') {
+      error.status = 409;
+      error.message = 'Magazina është përdorur në dokumente ose stok. Përdor Arkivo.';
+    }
+    throw error;
+  } finally { client.release(); }
+}));
+
 app.get('/api/users', authRequired, requireRoles(...ADMIN_ROLES), asyncRoute(async (req, res) => {
   const companyIds = await accessibleCompanyIds(req.user);
   const params = [req.user.tenant_id];
