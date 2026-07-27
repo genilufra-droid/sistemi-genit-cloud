@@ -209,7 +209,9 @@
       sourceDocumentId:x.sourceDocumentId || '', sourceDocumentType:x.sourceDocumentType || '',
       docNumber:x.documentNo, date:x.documentDate,
       status:x.status === 'CONFIRMED' && ['PURCHASE_RECEIPT','DELIVERY_NOTE','PURCHASE_INVOICE','SALES_INVOICE'].indexOf(x.docType) >= 0 ? 'POSTED' : x.status,
-      notes:x.notes || '', quantity:quantity, totalNet:num(x.totalNet), vatAmount:num(x.totalVat), totalAmount:num(x.totalAmount), lines:lines,
+      notes:x.notes || '', quantity:quantity, totalNet:num(x.totalNet), vatAmount:num(x.totalVat), totalAmount:num(x.totalAmount),
+      paidAmount:num(x.paidAmount), remainingAmount:num(x.remainingAmount),
+      paymentStatus:x.paymentStatus || (num(x.remainingAmount)>0?'UNPAID':'PAID'), lines:lines,
       supplierId:/^PURCHASE_/.test(x.docType) ? x.partnerId : null, supplierName:/^PURCHASE_/.test(x.docType) ? (x.partnerName || '') : '',
       customerId:/^(SALES_|DELIVERY_)/.test(x.docType) ? x.partnerId : null, customerName:/^(SALES_|DELIVERY_)/.test(x.docType) ? (x.partnerName || '') : '',
       createdAt:x.createdAt, updatedAt:x.updatedAt, cloudVersion:x.version || 1
@@ -245,6 +247,47 @@
     var documentStores = ['purchaseRFQs','purchaseOrders','purchaseReceipts','purchaseInvoices','salesQuotations','salesOrders','deliveryNotes','salesInvoices'];
     documentStores.forEach(function (key) { App.data[key] = []; });
     (bootstrapData.documents || []).forEach(function (row) { var x=camel(row), store=docStore(x.docType); if(store) App.data[store].push(mapDocument(row)); });
+    App.data.supplierLedger = [];
+    App.data.customerLedger = [];
+    function dueDate(date,days) {
+      var value=new Date(String(date||'').slice(0,10)+'T00:00:00');
+      if(Number.isNaN(value.getTime())) return date||'';
+      value.setDate(value.getDate()+num(days));
+      return value.toISOString().slice(0,10);
+    }
+    function ledgerStatus(value) {
+      return value==='PARTIAL'?'PARTIALLY_PAID':(value||'UNPAID');
+    }
+    (App.data.purchaseInvoices||[]).filter(function(x){return x.status==='POSTED';}).forEach(function(invoice){
+      var supplier=(App.data.suppliers||[]).find(function(x){return x.id===invoice.supplierId;})||{};
+      App.data.supplierLedger.push({
+        id:'cloud-supplier-charge-'+invoice.id,supplierId:invoice.supplierId,invoiceId:invoice.id,
+        docNumber:invoice.docNumber,entryType:'CHARGE',amount:num(invoice.totalAmount),
+        paidAmount:num(invoice.paidAmount),balance:num(invoice.remainingAmount),date:invoice.date,
+        dueDate:dueDate(invoice.date,supplier.paymentTerms||30),status:ledgerStatus(invoice.paymentStatus),
+        cloud:true
+      });
+    });
+    (App.data.salesInvoices||[]).filter(function(x){return x.status==='POSTED';}).forEach(function(invoice){
+      var customer=(App.data.customers||[]).find(function(x){return x.id===invoice.customerId;})||{};
+      App.data.customerLedger.push({
+        id:'cloud-customer-charge-'+invoice.id,customerId:invoice.customerId,invoiceId:invoice.id,
+        docNumber:invoice.docNumber,entryType:'CHARGE',amount:num(invoice.totalAmount),
+        paidAmount:num(invoice.paidAmount),balance:num(invoice.remainingAmount),date:invoice.date,
+        dueDate:dueDate(invoice.date,customer.paymentTerms||30),status:ledgerStatus(invoice.paymentStatus),
+        cloud:true
+      });
+    });
+    (App.data.suppliers||[]).forEach(function(supplier){
+      var invoices=(App.data.purchaseInvoices||[]).filter(function(x){return x.status==='POSTED'&&x.supplierId===supplier.id;});
+      supplier.totalPurchases=invoices.reduce(function(total,x){return total+num(x.totalAmount);},0);
+      supplier.balance=invoices.reduce(function(total,x){return total+num(x.remainingAmount);},num(supplier.openingBalance));
+    });
+    (App.data.customers||[]).forEach(function(customer){
+      var invoices=(App.data.salesInvoices||[]).filter(function(x){return x.status==='POSTED'&&x.customerId===customer.id;});
+      customer.totalSales=invoices.reduce(function(total,x){return total+num(x.totalAmount);},0);
+      customer.balance=invoices.reduce(function(total,x){return total+num(x.remainingAmount);},num(customer.openingBalance));
+    });
 
     var ci=document.querySelector('.company-info');
     if(ci) ci.innerHTML='<strong>'+esc(company.name||'Sistemi Genit')+'</strong><br>NIPT: '+esc(company.nipt||'—');
