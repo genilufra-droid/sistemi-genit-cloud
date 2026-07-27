@@ -210,12 +210,23 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         PURCHASE_RFQ:['PURCHASE_ORDER'],
         PURCHASE_ORDER:['PURCHASE_RECEIPT'],
         PURCHASE_RECEIPT:['PURCHASE_INVOICE'],
-        SALES_QUOTE:['SALES_ORDER','SALES_INVOICE'],
-        SALES_ORDER:['DELIVERY_NOTE','SALES_INVOICE'],
+        SALES_QUOTE:['SALES_ORDER'],
+        SALES_ORDER:['DELIVERY_NOTE'],
         DELIVERY_NOTE:['SALES_INVOICE'],
       };
       if(!(allowed[source.doc_type]||[]).includes(targetType)) {
         throw requestError(`Konvertimi ${source.doc_type} → ${targetType} nuk lejohet.`,400);
+      }
+      if(source.status==='DRAFT') {
+        await client.query(
+          "UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),updated_at=NOW() WHERE id=$1",
+          [source.id],
+        );
+        await audit({
+          tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONFIRM',
+          entityType:'business_document',entityId:source.id,companyId:source.company_id,
+          metadata:{docType:source.doc_type,documentNo:source.document_no,automatic:true,reason:'conversion'},ip:req.ip,
+        },client);
       }
       const existing = await client.query(
         'SELECT * FROM business_documents WHERE tenant_id=$1 AND source_document_id=$2 AND doc_type=$3 LIMIT 1',
@@ -313,6 +324,34 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       const document = await lockDocument(client,req.params.id,req.user.tenant_id);
       await assertCompanyAccess(req.user,document.company_id,client);
       if(document.status==='CANCELLED') throw requestError('Dokumenti është anuluar më parë.',409);
+      const downstream = await client.query(
+        `SELECT document_no,doc_type FROM business_documents
+         WHERE tenant_id=$1 AND source_document_id=$2 AND status<>'CANCELLED'
+         ORDER BY created_at LIMIT 1`,
+        [req.user.tenant_id,document.id],
+      );
+      if(downstream.rows[0]) {
+        throw requestError(
+          `Anuloni më parë dokumentin pasues ${downstream.rows[0].document_no}.`,
+          409,
+        );
+      }
+      if(['PURCHASE_INVOICE','SALES_INVOICE'].includes(document.doc_type)) {
+        const postedPayment = await client.query(
+          `SELECT f.document_no
+           FROM payment_allocations pa
+           JOIN finance_documents f ON f.id=pa.finance_document_id
+           WHERE pa.business_document_id=$1 AND f.tenant_id=$2 AND f.status='POSTED'
+           LIMIT 1`,
+          [document.id,req.user.tenant_id],
+        );
+        if(postedPayment.rows[0]) {
+          throw requestError(
+            `Anuloni më parë pagesën e lidhur ${postedPayment.rows[0].document_no}.`,
+            409,
+          );
+        }
+      }
       const sign = STOCK_TYPES[document.doc_type];
       if(document.status==='CONFIRMED' && sign) {
         const items = await readItems(client,document.id);
