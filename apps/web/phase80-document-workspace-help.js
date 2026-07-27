@@ -384,6 +384,10 @@
     var rows = items.map(function (line, index) {
       return '<tr><td class="center">'+(index+1)+'</td><td>'+esc(line.description || line.productName || '')+'</td><td class="center">'+esc(line.unit || '')+'</td><td class="right">'+fmt(line.quantity,3)+'</td><td class="right">'+money(line.unitPrice)+'</td><td class="right">'+fmt(line.vatRate,2)+'%</td><td class="right">'+money(line.lineNet)+'</td><td class="right">'+money(line.lineVat)+'</td><td class="right">'+money(line.lineTotal)+'</td></tr>';
     }).join('');
+    var minimumRows = /RECEIPT|DELIVERY/.test(type) ? 8 : 0;
+    for (var emptyIndex=items.length; emptyIndex<minimumRows; emptyIndex+=1) {
+      rows += '<tr><td class="center">'+(emptyIndex+1)+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
+    }
     var docNo = doc.document_no || doc.documentNo || '';
     var docDate = doc.document_date || doc.documentDate || '';
     return '<section class="sg80-paper"><div class="sg80-weight-title"><div><small>'+esc(company.name || doc.company_name || 'SISTEMI GENIT')+'</small><h1>'+esc(title)+'</h1></div><div style="text-align:right"><b>Nr. '+esc(docNo)+'</b><br>Data: '+esc(dateSq(docDate))+'<br>Statusi: '+esc(doc.status || '—')+'</div></div><div class="sg80-invoice-parties"><div class="sg80-party"><h3>SHITËSI</h3><p><b>'+esc(seller.name || '—')+'</b></p><p>NIPT: '+esc(seller.nipt || seller.tax_id || '—')+'</p><p>Adresa: '+esc([seller.address,seller.city].filter(Boolean).join(', ') || '—')+'</p><p>Telefon: '+esc(seller.phone || '—')+'</p></div><div class="sg80-party"><h3>BLERËSI</h3><p><b>'+esc(buyer.name || '—')+'</b></p><p>NIPT: '+esc(buyer.nipt || buyer.tax_id || '—')+'</p><p>Adresa: '+esc([buyer.address,buyer.city].filter(Boolean).join(', ') || '—')+'</p><p>Telefon: '+esc(buyer.phone || '—')+'</p></div></div><table class="sg80-table"><thead><tr><th>Nr</th><th>Përshkrimi</th><th>Njësia</th><th>Sasia</th><th>Çmimi</th><th>TVSH %</th><th>Pa TVSH</th><th>TVSH</th><th>Vlera Totale</th></tr></thead><tbody>'+rows+'</tbody></table><div class="sg80-invoice-summary"><div><p><b>Magazina:</b> '+esc(doc.warehouse_name || '—')+'</p><p><b>Shënime:</b> '+esc(doc.notes || '—')+'</p>'+(isInvoice?'<p><b>Mënyra e pagesës:</b> '+esc(doc.payment_method || 'Sipas marrëveshjes')+'</p>':'')+'</div><table class="sg80-totals"><tr><td>Vlera pa TVSH</td><td>'+money(doc.total_net)+'</td></tr><tr><td>TVSH</td><td>'+money(doc.total_vat)+'</td></tr><tr><td>TOTALI '+esc(company.currency || 'ALL')+'</td><td>'+money(doc.total_amount)+'</td></tr></table></div><div class="sg80-signatures" style="margin-top:18px;border-top:2px solid #111"><div><span>Përgatiti</span><strong></strong></div><div><span>Magazinieri</span><strong></strong></div><div><span>Pranoi</span><strong></strong></div><div><span>Firma / Vula</span><strong></strong></div></div></section>';
@@ -414,20 +418,14 @@
   }
 
   function exportBusinessPdf(doc, company, partner, title) {
-    var rows = businessRows(doc);
-    if (!rows.length) return App.toast('Dokumenti nuk ka artikuj për PDF.', 'error');
-    if (!global.PDFEngine) return App.toast('Motori PDF nuk është ngarkuar.', 'error');
-    global.PDFEngine.downloadReport({
-      company:company,
-      title:title,
-      filtersText:'Data: '+dateSq(doc.document_date || doc.documentDate)+' | Partneri: '+(partner.name || doc.partner_name || '—')+' | Magazina: '+(doc.warehouse_name || '—')+' | Statusi: '+(doc.status || '—'),
-      columns:businessColumns(),
-      rows:rows,
-      orientation:'landscape',
-      filename:safeName(title)+'.pdf',
-      footer:'Vlera pa TVSH: '+money(doc.total_net)+' | TVSH: '+money(doc.total_vat)+' | TOTALI: '+money(doc.total_amount)+' '+(company.currency || 'ALL')
-    });
-    App.toast('PDF real u eksportua.');
+    if (!businessRows(doc).length) return App.toast('Dokumenti nuk ka artikuj për PDF.', 'error');
+    /*
+     * PDF must be identical to the on-screen A4 document.  The browser print
+     * service is the only reliable cross-device renderer (especially Android)
+     * for the exact HTML/CSS layout.  It also exposes "Ruaj si PDF".
+     */
+    printHtml(title, renderBusiness(doc, company, partner));
+    App.toast('Zgjidh “Ruaj si PDF” te dritarja e printimit.');
   }
 
   function exportBusinessExcel(doc, company, partner, title) {
@@ -482,7 +480,7 @@
       if (created) App.sg80CloseTab('business:'+id);
       return created;
     } : null;
-    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, flowAction:flowFn, flowLabel:flowLabel, deleteAction:deleteFn });
+    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real A4 — Print, PDF dhe Excel nga të njëjtat të dhëna', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, flowAction:flowFn, flowLabel:flowLabel, deleteAction:deleteFn });
     return doc;
   }
 
@@ -605,6 +603,10 @@
     observer.observe(document.documentElement,{childList:true,subtree:true});
   }
 
+  App.sg80OpenRealDocument = function (id, type) {
+    if (!id) return Promise.reject(new Error('Dokumenti nuk u identifikua.'));
+    return openBusiness(id, type);
+  };
   App.SGPhase80 = { state:W, openTab:openTab, openTransfer:openTransfer, openBusiness:openBusiness, openWeight:openWeight, help:HELP };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })(window);
