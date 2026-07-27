@@ -244,7 +244,8 @@
     ui.stage.innerHTML = '<div class="sg80-toolbar"><div><h2>'+esc(tab.title)+'</h2><small>'+esc(tab.subtitle || 'Dokument i hapur në hapësirën e punës')+'</small></div><div class="sg80-actions">'+
       (tab.editAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'edit\')">✏️ Edito</button>' : '')+
       (tab.deleteAction ? '<button class="sg80-btn danger" onclick="App.sg80RunActive(\'delete\')">🗑 Fshi Draft</button>' : '')+
-      '<button class="sg80-btn" onclick="App.sg80RunActive(\'print\')">🖨 Print / PDF</button>'+
+      '<button class="sg80-btn" onclick="App.sg80RunActive(\'print\')">🖨 Print</button>'+
+      (tab.pdfAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'pdf\')">📄 PDF</button>' : '')+
       (tab.excelAction || tab.excelRows ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'excel\')">📊 Excel</button>' : '')+
       '<button class="sg80-btn" onclick="App.sg80OpenHelp()">? Ndihmë</button>'+
       '<button class="sg80-btn danger" onclick="App.sg80CloseTab(\''+attr(tab.key)+'\')">Mbyll</button></div></div>'+tab.html;
@@ -280,6 +281,7 @@
     if (!tab) return;
     if (action === 'edit' && typeof tab.editAction === 'function') return tab.editAction();
     if (action === 'delete' && typeof tab.deleteAction === 'function') return tab.deleteAction();
+    if (action === 'pdf' && typeof tab.pdfAction === 'function') return tab.pdfAction();
     if (action === 'print') {
       if (typeof tab.printAction === 'function') return tab.printAction();
       return printHtml(tab.title, tab.printHtml || tab.html);
@@ -295,10 +297,18 @@
   }
 
   function printHtml(title, body) {
-    var win = global.open('', '_blank');
-    if (!win) return App.toast('Shfletuesi bllokoi dritaren e printimit.', 'error');
-    win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+printCss()+'</style></head><body>'+body+'<script>window.onload=function(){setTimeout(function(){window.print();},180)};<\/script></body></html>');
-    win.document.close();
+    var frame = document.createElement('iframe');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0';
+    document.body.appendChild(frame);
+    var doc = frame.contentDocument;
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+printCss()+'</style></head><body>'+body+'</body></html>');
+    doc.close();
+    setTimeout(function () {
+      try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+      catch (error) { App.toast('Printimi nuk u hap: '+(error.message || error), 'error'); }
+      setTimeout(function () { frame.remove(); }, 2000);
+    }, 400);
   }
 
   function exportRows(title, rows, sheetName) {
@@ -360,7 +370,6 @@
     var rows = items.map(function (line, index) {
       return '<tr><td class="center">'+(index+1)+'</td><td>'+esc(line.description || line.productName || '')+'</td><td class="center">'+esc(line.unit || '')+'</td><td class="right">'+fmt(line.quantity,3)+'</td><td class="right">'+money(line.unitPrice)+'</td><td class="right">'+fmt(line.vatRate,2)+'%</td><td class="right">'+money(line.lineNet)+'</td><td class="right">'+money(line.lineVat)+'</td><td class="right">'+money(line.lineTotal)+'</td></tr>';
     }).join('');
-    for (var i=items.length;i<Math.max(8,items.length);i+=1) rows += '<tr><td class="center">'+(i+1)+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
     var docNo = doc.document_no || doc.documentNo || '';
     var docDate = doc.document_date || doc.documentDate || '';
     return '<section class="sg80-paper"><div class="sg80-weight-title"><div><small>'+esc(company.name || doc.company_name || 'SISTEMI GENIT')+'</small><h1>'+esc(title)+'</h1></div><div style="text-align:right"><b>Nr. '+esc(docNo)+'</b><br>Data: '+esc(dateSq(docDate))+'<br>Statusi: '+esc(doc.status || '—')+'</div></div><div class="sg80-invoice-parties"><div class="sg80-party"><h3>SHITËSI</h3><p><b>'+esc(seller.name || '—')+'</b></p><p>NIPT: '+esc(seller.nipt || seller.tax_id || '—')+'</p><p>Adresa: '+esc([seller.address,seller.city].filter(Boolean).join(', ') || '—')+'</p><p>Telefon: '+esc(seller.phone || '—')+'</p></div><div class="sg80-party"><h3>BLERËSI</h3><p><b>'+esc(buyer.name || '—')+'</b></p><p>NIPT: '+esc(buyer.nipt || buyer.tax_id || '—')+'</p><p>Adresa: '+esc([buyer.address,buyer.city].filter(Boolean).join(', ') || '—')+'</p><p>Telefon: '+esc(buyer.phone || '—')+'</p></div></div><table class="sg80-table"><thead><tr><th>Nr</th><th>Përshkrimi</th><th>Njësia</th><th>Sasia</th><th>Çmimi</th><th>TVSH %</th><th>Pa TVSH</th><th>TVSH</th><th>Vlera Totale</th></tr></thead><tbody>'+rows+'</tbody></table><div class="sg80-invoice-summary"><div><p><b>Magazina:</b> '+esc(doc.warehouse_name || '—')+'</p><p><b>Shënime:</b> '+esc(doc.notes || '—')+'</p>'+(isInvoice?'<p><b>Mënyra e pagesës:</b> '+esc(doc.payment_method || 'Sipas marrëveshjes')+'</p>':'')+'</div><table class="sg80-totals"><tr><td>Vlera pa TVSH</td><td>'+money(doc.total_net)+'</td></tr><tr><td>TVSH</td><td>'+money(doc.total_vat)+'</td></tr><tr><td>TOTALI '+esc(company.currency || 'ALL')+'</td><td>'+money(doc.total_amount)+'</td></tr></table></div><div class="sg80-signatures" style="margin-top:18px;border-top:2px solid #111"><div><span>Përgatiti</span><strong></strong></div><div><span>Magazinieri</span><strong></strong></div><div><span>Pranoi</span><strong></strong></div><div><span>Firma / Vula</span><strong></strong></div></div></section>';
@@ -368,6 +377,65 @@
 
   function businessExcelRows(doc) {
     return (doc.items || []).map(function (line, index) { return { Nr:index+1, Pershkrimi:line.description || '', Njesia:line.unit || '', Sasia:num(line.quantity), Cmimi:num(line.unitPrice), TVSH_Perqind:num(line.vatRate), Vlera_Pa_TVSH:num(line.lineNet), TVSH:num(line.lineVat), Vlera_Totale:num(line.lineTotal) }; });
+  }
+
+  function businessColumns() {
+    return [
+      {key:'nr',label:'Nr.',width:35},
+      {key:'description',label:'Përshkrimi',width:180},
+      {key:'unit',label:'Njësia',width:55},
+      {key:'quantity',label:'Sasia',type:'number',width:65},
+      {key:'unitPrice',label:'Çmimi',type:'currency',width:75},
+      {key:'vatRate',label:'TVSH %',type:'number',width:55},
+      {key:'lineNet',label:'Pa TVSH',type:'currency',width:80},
+      {key:'lineVat',label:'TVSH',type:'currency',width:70},
+      {key:'lineTotal',label:'Totali',type:'currency',width:85}
+    ];
+  }
+
+  function businessRows(doc) {
+    return (doc.items || []).map(function (line, index) {
+      return {nr:index+1,description:line.description || line.productName || '',unit:line.unit || '',quantity:num(line.quantity),unitPrice:num(line.unitPrice),vatRate:num(line.vatRate),lineNet:num(line.lineNet),lineVat:num(line.lineVat),lineTotal:num(line.lineTotal)};
+    });
+  }
+
+  function exportBusinessPdf(doc, company, partner, title) {
+    var rows = businessRows(doc);
+    if (!rows.length) return App.toast('Dokumenti nuk ka artikuj për PDF.', 'error');
+    if (!global.PDFEngine) return App.toast('Motori PDF nuk është ngarkuar.', 'error');
+    global.PDFEngine.downloadReport({
+      company:company,
+      title:title,
+      filtersText:'Data: '+dateSq(doc.document_date || doc.documentDate)+' | Partneri: '+(partner.name || doc.partner_name || '—')+' | Magazina: '+(doc.warehouse_name || '—')+' | Statusi: '+(doc.status || '—'),
+      columns:businessColumns(),
+      rows:rows,
+      orientation:'landscape',
+      filename:safeName(title)+'.pdf',
+      footer:'Vlera pa TVSH: '+money(doc.total_net)+' | TVSH: '+money(doc.total_vat)+' | TOTALI: '+money(doc.total_amount)+' '+(company.currency || 'ALL')
+    });
+    App.toast('PDF real u eksportua.');
+  }
+
+  function exportBusinessExcel(doc, company, partner, title) {
+    if (!global.XLSX) return App.toast('Biblioteka Excel nuk është ngarkuar.', 'error');
+    var rows = businessRows(doc);
+    if (!rows.length) return App.toast('Dokumenti nuk ka artikuj për Excel.', 'error');
+    var columns = businessColumns();
+    var aoa = [[title],[company.name || doc.company_name || 'Sistemi Genit','NIPT: '+(company.nipt || '—')],['Data',dateSq(doc.document_date || doc.documentDate)],['Partneri',partner.name || doc.partner_name || '—'],['NIPT partneri',partner.nipt || partner.tax_id || '—'],['Magazina',doc.warehouse_name || '—'],['Statusi',doc.status || '—'],[],columns.map(function (column) { return column.label; })];
+    rows.forEach(function (row) { aoa.push(columns.map(function (column) { return row[column.key]; })); });
+    aoa.push([]);
+    aoa.push(['','','','','','','Vlera pa TVSH',num(doc.total_net)]);
+    aoa.push(['','','','','','','TVSH',num(doc.total_vat)]);
+    aoa.push(['','','','','','','TOTALI '+(company.currency || 'ALL'),num(doc.total_amount)]);
+    var ws = global.XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = columns.map(function (column) { return {wch:Math.max(9,Math.round((column.width || 70)/7))}; });
+    ws['!freeze'] = {xSplit:0,ySplit:9};
+    ws['!autofilter'] = {ref:'A9:I9'};
+    var wb = global.XLSX.utils.book_new();
+    global.XLSX.utils.book_append_sheet(wb, ws, String(docLabel(doc.doc_type || doc.docType)).slice(0,31));
+    if (global.DesktopIO && global.DesktopIO.saveWorkbook) global.DesktopIO.saveWorkbook(wb, safeName(title)+'.xlsx');
+    else global.XLSX.writeFile(wb, safeName(title)+'.xlsx');
+    App.toast('Excel real u eksportua.');
   }
 
   async function openBusiness(id, expectedType) {
@@ -392,7 +460,7 @@
       if (deleted) App.sg80CloseTab('business:'+id);
       return deleted;
     } : null;
-    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printHtml:html, excelRows:businessExcelRows(doc), excelSheet:docLabel(type).slice(0,31), editAction:editFn, deleteAction:deleteFn });
+    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, deleteAction:deleteFn });
     return doc;
   }
 
