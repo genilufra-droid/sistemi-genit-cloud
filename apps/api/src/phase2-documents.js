@@ -208,7 +208,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       if(source.status==='CANCELLED') throw requestError('Dokumenti i anuluar nuk mund të konvertohet.',409);
       const allowed = {
         PURCHASE_RFQ:['PURCHASE_ORDER'],
-        PURCHASE_ORDER:['PURCHASE_RECEIPT','PURCHASE_INVOICE'],
+        PURCHASE_ORDER:['PURCHASE_RECEIPT'],
         PURCHASE_RECEIPT:['PURCHASE_INVOICE'],
         SALES_QUOTE:['SALES_ORDER','SALES_INVOICE'],
         SALES_ORDER:['DELIVERY_NOTE','SALES_INVOICE'],
