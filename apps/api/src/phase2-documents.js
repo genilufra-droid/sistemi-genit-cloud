@@ -159,6 +159,45 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
     } catch(error) { await client.query('ROLLBACK'); next(error); } finally { client.release(); }
   });
 
+  app.delete('/api/documents/:id', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const document = await lockDocument(client,req.params.id,req.user.tenant_id);
+      await assertCompanyAccess(req.user,document.company_id,client);
+      if(document.status !== 'DRAFT') {
+        throw requestError('Vetëm dokumenti Draft mund të fshihet. Për dokumentin e konfirmuar përdor Anullo.',409);
+      }
+      const downstream = await client.query(
+        `SELECT document_no,doc_type FROM business_documents
+         WHERE tenant_id=$1 AND source_document_id=$2
+         ORDER BY created_at LIMIT 1`,
+        [req.user.tenant_id,document.id],
+      );
+      if(downstream.rows[0]) {
+        throw requestError(
+          `Dokumenti nuk mund të fshihet sepse ka dokument pasues: ${downstream.rows[0].document_no}.`,
+          409,
+        );
+      }
+      await client.query(
+        'DELETE FROM business_documents WHERE id=$1 AND tenant_id=$2',
+        [document.id,req.user.tenant_id],
+      );
+      await audit({
+        tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_DELETE_DRAFT',
+        entityType:'business_document',entityId:document.id,companyId:document.company_id,
+        metadata:{docType:document.doc_type,documentNo:document.document_no},ip:req.ip,
+      },client);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id,'documents',{action:'deleted',id:document.id,docType:document.doc_type});
+      res.json({ok:true,id:document.id,deleted:true});
+    } catch(error) {
+      await client.query('ROLLBACK');
+      next(error);
+    } finally { client.release(); }
+  });
+
   app.post('/api/documents/:id/convert', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
     const client = await pool.connect();
     try {
