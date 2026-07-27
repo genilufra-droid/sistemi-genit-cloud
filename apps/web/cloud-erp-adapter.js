@@ -391,23 +391,66 @@
       await global.CloudERP.refresh(); this.navigate('products');
     } catch (error) { this.toast(error.message || String(error), 'error'); }
   };
+  var localDeleteMasterRecord = App.deleteMasterRecord;
   App.deleteMasterRecord = async function (kind, id) {
     try {
       Auth.requirePermission('masters.manage');
       var isProduct = kind === 'product';
       var isPartner = kind === 'supplier' || kind === 'customer';
-      if (!isProduct && !isPartner) throw new Error('Ky lloj regjistri nuk mund të fshihet nga Cloud.');
-      var list = isProduct ? this.data.products : (kind === 'supplier' ? this.data.suppliers : this.data.customers);
+      var isCategory = kind === 'categories';
+      var isWarehouse = kind === 'warehouses';
+      if (!isProduct && !isPartner && !isCategory && !isWarehouse) {
+        if (typeof localDeleteMasterRecord === 'function') return localDeleteMasterRecord.call(this,kind,id);
+        throw new Error('Ky lloj regjistri nuk mund të fshihet.');
+      }
+      var list = isProduct ? this.data.products : isCategory ? this.data.categories : isWarehouse ? this.data.warehouses : (kind === 'supplier' ? this.data.suppliers : this.data.customers);
       var record = (list || []).find(function (row) { return row.id === id; });
       if (!record) throw new Error('Regjistri nuk u gjet në listën online.');
       if (!global.confirm('Fshi përgjithmonë “' + (record.name || record.code || id) + '”?')) return;
-      await request((isProduct ? '/api/products/' : '/api/partners/') + encodeURIComponent(id), { method:'DELETE' });
+      var endpoint = isProduct ? '/api/products/' : isCategory ? '/api/categories/' : isWarehouse ? '/api/warehouses/' : '/api/partners/';
+      await request(endpoint + encodeURIComponent(id), { method:'DELETE' });
       this.toast('Regjistri u fshi.');
       await global.CloudERP.refresh();
-      this.navigate(isProduct ? 'products' : 'partners');
+      this.navigate(isProduct ? 'products' : (isCategory || isWarehouse) ? 'settings' : 'partners');
     } catch (error) {
       this.toast(error.message || String(error), 'error');
     }
+  };
+
+  App.deleteCloudDocument = async function (id, returnView) {
+    try {
+      Auth.requirePermission('documents.cancel');
+      var stores = ['purchaseRFQs','purchaseOrders','purchaseReceipts','purchaseInvoices','salesQuotations','salesOrders','deliveryNotes','salesInvoices'];
+      var document = null;
+      for (var i=0;i<stores.length && !document;i++) {
+        document = (this.data[stores[i]] || []).find(function (row) { return row.id === id; });
+      }
+      if (!document) throw new Error('Dokumenti nuk u gjet në listën online.');
+      if (document.status !== 'DRAFT') throw new Error('Vetëm dokumenti Draft mund të fshihet. Për dokumentin e konfirmuar përdor Anullo.');
+      if (!global.confirm('Fshi dokumentin Draft “' + (document.docNumber || id) + '”?')) return;
+      await request('/api/documents/' + encodeURIComponent(id), { method:'DELETE' });
+      this.closeModal();
+      this.toast('Dokumenti Draft u fshi.');
+      await global.CloudERP.refresh();
+      if (returnView) this.navigate(returnView);
+    } catch (error) {
+      this.toast(error.message || String(error), 'error');
+    }
+  };
+
+  App.deletePurchaseInvoiceDraft = function (id) {
+    return this.deleteCloudDocument(id,'purchaseInvoices');
+  };
+  App.deleteSaleInvoiceDraft = function (id) {
+    return this.deleteCloudDocument(id,'salesList');
+  };
+  App.deleteOdooDraft = function (type,id) {
+    var viewByType = {
+      purchaseRFQ:'purchaseRFQs',purchaseOrder:'purchaseOrders',purchaseReceipt:'purchaseReceipts',
+      salesQuotation:'salesQuotations',salesOrder:'salesOrders',deliveryNote:'deliveryNotes',
+      supplierCreditNote:'supplierCreditNotes',purchaseReturn:'purchaseReturns',creditNote:'creditNotes'
+    };
+    return this.deleteCloudDocument(id,viewByType[type] || this.currentView);
   };
 
   Auth.bootstrap=bootstrap; Auth.login=login; Auth.logout=logout; Auth.getCurrentUser=function(){return currentUser;};
