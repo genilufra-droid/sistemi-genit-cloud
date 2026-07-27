@@ -248,7 +248,17 @@ export function installPhase3CloudCoreRoutes({
       res.json({ ok: true, deleted });
     } catch (error) {
       await client.query('ROLLBACK');
-      next(error);
+      if (error.status) {
+        next(error);
+      } else {
+        const diagnostic = [
+          error.code,
+          error.table,
+          error.constraint,
+          error.detail,
+        ].filter(Boolean).join(' · ');
+        next(requestError(`Fshirja dështoi: ${diagnostic || error.message || 'gabim i panjohur'}`, 409));
+      }
     } finally {
       client.release();
     }
