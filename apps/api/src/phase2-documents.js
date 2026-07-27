@@ -222,6 +222,20 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         [req.user.tenant_id,source.id,targetType],
       );
       if(existing.rows[0]) {
+        if(['PURCHASE_INVOICE','SALES_INVOICE'].includes(targetType) && existing.rows[0].status==='DRAFT') {
+          const confirmed = await client.query(
+            "UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),updated_at=NOW() WHERE id=$1 RETURNING *",
+            [existing.rows[0].id],
+          );
+          await audit({
+            tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONFIRM',
+            entityType:'business_document',entityId:existing.rows[0].id,companyId:source.company_id,
+            metadata:{docType:targetType,documentNo:existing.rows[0].document_no,sourceId:source.id,automatic:true},ip:req.ip,
+          },client);
+          await client.query('COMMIT');
+          emitTenant(req.user.tenant_id,'documents',{action:'confirmed',id:existing.rows[0].id,docType:targetType,sourceId:source.id});
+          return res.json(confirmed.rows[0]);
+        }
         await client.query('COMMIT');
         return res.json(existing.rows[0]);
       }
@@ -229,12 +243,14 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       if(!sourceItems.length) throw requestError('Dokumenti burim nuk ka artikuj.',409);
       const id=randomUUID();
       const documentNo=await nextDocumentNo(client,req.user.tenant_id,source.company_id,targetType);
+      const autoConfirm=['PURCHASE_INVOICE','SALES_INVOICE'].includes(targetType);
       const {rows}=await client.query(`
         INSERT INTO business_documents(
           id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,
-          total_net,total_vat,total_amount,created_by,source_document_id,source_document_type
-        ) VALUES($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,'DRAFT',$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[
+          total_net,total_vat,total_amount,created_by,source_document_id,source_document_type,confirmed_at
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,$8,$9,$10,$11,$12,$13,$14,$15,CASE WHEN $8='CONFIRMED' THEN NOW() ELSE NULL END) RETURNING *`,[
         id,req.user.tenant_id,source.company_id,source.warehouse_id,source.partner_id,targetType,documentNo,
+        autoConfirm?'CONFIRMED':'DRAFT',
         `Krijuar nga ${source.document_no}${source.notes?` — ${source.notes}`:''}`,
         source.total_net,source.total_vat,source.total_amount,req.user.id,source.id,source.doc_type,
       ]);
@@ -251,7 +267,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       await audit({
         tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONVERT',entityType:'business_document',
         entityId:id,companyId:source.company_id,
-        metadata:{sourceId:source.id,sourceType:source.doc_type,sourceNo:source.document_no,targetType,documentNo},ip:req.ip,
+        metadata:{sourceId:source.id,sourceType:source.doc_type,sourceNo:source.document_no,targetType,documentNo,autoConfirmed:autoConfirm},ip:req.ip,
       },client);
       await client.query('COMMIT');
       emitTenant(req.user.tenant_id,'documents',{action:'converted',id,docType:targetType,sourceId:source.id});
