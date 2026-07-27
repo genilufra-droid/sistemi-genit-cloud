@@ -171,7 +171,7 @@ export function installPhase3CloudCoreRoutes({
 
       const protectedTables = new Set([
         'tenants', 'companies', 'users', 'user_companies', 'warehouses', 'user_warehouses',
-        'tenant_settings', 'system_devices', 'finance_accounts', 'expense_categories',
+        'tenant_settings', 'system_devices', 'system_action_events', 'finance_accounts', 'expense_categories',
         'global_master_records', 'inventory_operation_types', 'mrp_locations',
       ]);
       const tableResult = await client.query(`
@@ -253,6 +253,7 @@ export function installPhase3CloudCoreRoutes({
       } else {
         const diagnostic = [
           error.code,
+          error.message,
           error.table,
           error.constraint,
           error.detail,
