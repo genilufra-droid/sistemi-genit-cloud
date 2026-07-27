@@ -138,6 +138,30 @@ export function installPhase2Routes({ app, pool, authRequired, requireRoles, ass
   app.get('/api/categories', authRequired, async (req,res,next)=>{ try { const ids=await accessibleIds(req.user,pool); if(!ids.length)return res.json([]); const {rows}=await pool.query('SELECT * FROM product_categories WHERE tenant_id=$1 AND company_id=ANY($2::uuid[]) ORDER BY active DESC,name',[req.user.tenant_id,ids]); res.json(rows); } catch(e){next(e);} });
   app.post('/api/categories', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next)=>{ try { const i=categorySchema.parse(req.body); await assertCompanyAccess(req.user,i.companyId); const id=randomUUID(); const {rows}=await pool.query('INSERT INTO product_categories(id,tenant_id,company_id,name,code,active) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[id,req.user.tenant_id,i.companyId,i.name,i.code||null,i.active ?? true]); await audit({tenantId:req.user.tenant_id,userId:req.user.id,action:'CATEGORY_CREATE',entityType:'product_category',entityId:id,companyId:i.companyId,metadata:{name:i.name},ip:req.ip}); emitTenant(req.user.tenant_id,'categories',{action:'created',id}); res.status(201).json(rows[0]); } catch(e){next(e);} });
   app.patch('/api/categories/:id', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next)=>{ try { const current=await getScoped('product_categories',req.params.id,req.user); const i=categorySchema.parse(req.body); await assertCompanyAccess(req.user,i.companyId); const {rows}=await pool.query('UPDATE product_categories SET company_id=$1,name=$2,code=$3,active=$4,updated_at=NOW() WHERE id=$5 AND tenant_id=$6 RETURNING *',[i.companyId,i.name,i.code||null,i.active ?? current.active,current.id,req.user.tenant_id]); await audit({tenantId:req.user.tenant_id,userId:req.user.id,action:'CATEGORY_UPDATE',entityType:'product_category',entityId:current.id,companyId:i.companyId,metadata:{name:i.name},ip:req.ip}); emitTenant(req.user.tenant_id,'categories',{action:'updated',id:current.id}); res.json(rows[0]); } catch(e){next(e);} });
+  app.delete('/api/categories/:id', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next)=>{
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current=await getScoped('product_categories',req.params.id,req.user,client);
+      const used=await client.query(
+        'SELECT 1 FROM products WHERE tenant_id=$1 AND category_id=$2 LIMIT 1',
+        [req.user.tenant_id,current.id],
+      );
+      if(used.rowCount){
+        const e=new Error('Kategoria është përdorur nga artikuj. Përdor Arkivo.');
+        e.status=409;
+        throw e;
+      }
+      await client.query('DELETE FROM product_categories WHERE id=$1 AND tenant_id=$2',[current.id,req.user.tenant_id]);
+      await audit({tenantId:req.user.tenant_id,userId:req.user.id,action:'CATEGORY_DELETE',entityType:'product_category',entityId:current.id,companyId:current.company_id,metadata:{name:current.name},ip:req.ip},client);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id,'categories',{action:'deleted',id:current.id});
+      res.json({ok:true,id:current.id,deleted:true});
+    } catch(e) {
+      await client.query('ROLLBACK');
+      next(e);
+    } finally { client.release(); }
+  });
 
   app.get('/api/products', authRequired, async (req,res,next)=>{ try { const ids=await accessibleIds(req.user,pool); if(!ids.length)return res.json([]); const q=text(req.query.q); const params=[req.user.tenant_id,ids]; let filter=''; if(q){params.push(`%${q}%`);filter=' AND (p.name ILIKE $3 OR p.code ILIKE $3 OR COALESCE(p.barcode,\'\') ILIKE $3)';} const {rows}=await pool.query(`SELECT p.*,c.name AS category_name,co.name AS company_name FROM products p LEFT JOIN product_categories c ON c.id=p.category_id JOIN companies co ON co.id=p.company_id WHERE p.tenant_id=$1 AND p.company_id=ANY($2::uuid[]) ${filter} ORDER BY p.active DESC,p.name`,params); res.json(rows); } catch(e){next(e);} });
   app.get('/api/products/:id', authRequired, async (req,res,next)=>{ try { res.json(await getScoped('products',req.params.id,req.user)); } catch(e){next(e);} });
