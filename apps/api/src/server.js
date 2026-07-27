@@ -677,7 +677,10 @@ app.use((error, _req, res, _next) => {
     return res.status(409).json({ error: 'DUPLICATE', message: 'Ekziston një rekord me të njëjtin emër, username, email ose kod.' });
   }
   const status = Number(error.status || 500);
-  res.status(status).json({ error: status === 500 ? 'SERVER_ERROR' : 'REQUEST_ERROR', message: status === 500 ? 'Ndodhi një gabim në server.' : error.message });
+  res.status(status).json({
+    error: status === 500 ? 'SERVER_ERROR' : 'REQUEST_ERROR',
+    message: status === 500 ? (error.publicMessage || 'Ndodhi një gabim në server.') : error.message,
+  });
 });
 
 await migrate();
