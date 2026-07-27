@@ -516,6 +516,22 @@
     }
   };
 
+  var originalViewCompanies = App.view_companies;
+  App.view_companies = function () {
+    var result = originalViewCompanies.apply(this, arguments);
+    var title = document.querySelector('#content .card-title');
+    if (title && !document.getElementById('cloud-reset-business-data')) {
+      var button = document.createElement('button');
+      button.id = 'cloud-reset-business-data';
+      button.type = 'button';
+      button.className = 'btn btn-red btn-sm';
+      button.textContent = '🗑 Fshi të Dhënat e Provës';
+      button.onclick = function () { App.wipeData(); };
+      title.appendChild(button);
+    }
+    return result;
+  };
+
   Auth.bootstrap=bootstrap; Auth.login=login; Auth.logout=logout; Auth.getCurrentUser=function(){return currentUser;};
   Auth.hasPermission=hasPermission; Auth.requirePermission=function(permission){if(!hasPermission(permission))throw new Error('Nuk keni leje për këtë veprim.');return true;}; Auth.canView=canView;
   Auth.listUsers=listUsers; Auth.createUser=createUser; Auth.updateUser=updateUser; Auth.resetPassword=resetPassword; Auth.changeOwnPassword=changeOwnPassword;
