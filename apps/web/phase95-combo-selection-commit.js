@@ -142,12 +142,10 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       {target:'PURCHASE_INVOICE',type:'purchaseInvoice',label:'Krijo Faturë'}
     ],
     salesQuotation:[
-      {target:'SALES_ORDER',type:'salesOrder',label:'Krijo Porosi'},
-      {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
+      {target:'SALES_ORDER',type:'salesOrder',label:'Krijo Porosi'}
     ],
     salesOrder:[
-      {target:'DELIVERY_NOTE',type:'deliveryNote',label:'Krijo Fletë-Dalje'},
-      {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
+      {target:'DELIVERY_NOTE',type:'deliveryNote',label:'Krijo Fletë-Dalje'}
     ],
     deliveryNote:[
       {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
