@@ -243,6 +243,7 @@
     ui.stage.style.display = 'block';
     ui.stage.innerHTML = '<div class="sg80-toolbar"><div><h2>'+esc(tab.title)+'</h2><small>'+esc(tab.subtitle || 'Dokument i hapur në hapësirën e punës')+'</small></div><div class="sg80-actions">'+
       (tab.editAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'edit\')">✏️ Edito</button>' : '')+
+      (tab.deleteAction ? '<button class="sg80-btn danger" onclick="App.sg80RunActive(\'delete\')">🗑 Fshi Draft</button>' : '')+
       '<button class="sg80-btn" onclick="App.sg80RunActive(\'print\')">🖨 Print / PDF</button>'+
       (tab.excelAction || tab.excelRows ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'excel\')">📊 Excel</button>' : '')+
       '<button class="sg80-btn" onclick="App.sg80OpenHelp()">? Ndihmë</button>'+
@@ -278,6 +279,7 @@
     var tab = W.tabs.find(function (row) { return row.key === W.activeKey; });
     if (!tab) return;
     if (action === 'edit' && typeof tab.editAction === 'function') return tab.editAction();
+    if (action === 'delete' && typeof tab.deleteAction === 'function') return tab.deleteAction();
     if (action === 'print') {
       if (typeof tab.printAction === 'function') return tab.printAction();
       return printHtml(tab.title, tab.printHtml || tab.html);
@@ -385,7 +387,12 @@
       else if (typeof original.openOdooDocument === 'function') editFn = function(){ App.sg80ShowModule(); return original.openOdooDocument.call(App,type,id); };
     }
     var html = renderBusiness(doc, company, partner);
-    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printHtml:html, excelRows:businessExcelRows(doc), excelSheet:docLabel(type).slice(0,31), editAction:editFn });
+    var deleteFn = doc.status === 'DRAFT' && typeof App.deleteCloudDocument === 'function' ? async function () {
+      var deleted = await App.deleteCloudDocument(id);
+      if (deleted) App.sg80CloseTab('business:'+id);
+      return deleted;
+    } : null;
+    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printHtml:html, excelRows:businessExcelRows(doc), excelSheet:docLabel(type).slice(0,31), editAction:editFn, deleteAction:deleteFn });
     return doc;
   }
 
