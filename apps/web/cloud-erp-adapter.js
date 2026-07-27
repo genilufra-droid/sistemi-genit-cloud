@@ -516,6 +516,81 @@
     }
   };
 
+  // The partner card belongs to the legacy offline UI, but cloud invoices live
+  // in PostgreSQL. Record partner payments as real finance documents and
+  // allocate them to the selected cloud invoice instead of writing IndexedDB.
+  App.payPartner = async function (partnerId, isCustomer) {
+    var amountInput = document.getElementById('pay-amount');
+    var methodInput = document.getElementById('pay-method');
+    var submit = document.getElementById('pay-submit');
+    var amount = num(amountInput && amountInput.value);
+    var method = String((global.SearchableCombo && global.SearchableCombo.getSelectedId &&
+      global.SearchableCombo.getSelectedId(methodInput)) || (methodInput && methodInput.value) || 'cash').toLowerCase();
+    if (amount <= 0) {
+      this.toast('Vendos shumën e pagesës.', 'error');
+      return;
+    }
+    var ledger = this.data[isCustomer ? 'customerLedger' : 'supplierLedger'] || [];
+    var partnerKey = isCustomer ? 'customerId' : 'supplierId';
+    var charge = ledger.find(function (entry) {
+      return entry[partnerKey] === partnerId && entry.entryType === 'CHARGE' &&
+        entry.status !== 'PAID' && entry.status !== 'REVERSED' && entry.cloud === true;
+    });
+    if (!charge) {
+      this.toast('Nuk ka detyrim të hapur.', 'error');
+      return;
+    }
+    if (amount > num(charge.balance) + 0.005) {
+      this.toast('Pagesa tejkalon shumën e mbetur: ' + num(charge.balance).toLocaleString('sq-AL'), 'error');
+      return;
+    }
+    try {
+      if (submit) submit.disabled = true;
+      var accountKind = method === 'cash' ? 'CASH' : 'BANK';
+      var accounts = (await request('/api/finance/accounts')).map(camel).filter(function (account) {
+        return account.active !== false && account.accountKind === accountKind &&
+          (!App.company || !App.company.id || account.companyId === App.company.id);
+      });
+      if (!accounts.length) {
+        throw new Error(accountKind === 'CASH'
+          ? 'Nuk ka llogari Arke aktive. Hap “Llogaritë” dhe krijo Arkën.'
+          : 'Nuk ka llogari Banke aktive. Hap “Llogaritë” dhe krijo llogarinë bankare.');
+      }
+      var account = accounts.find(function (item) { return String(item.currency || 'ALL').toUpperCase() === 'ALL'; }) || accounts[0];
+      var partner = (this.data[isCustomer ? 'customers' : 'suppliers'] || []).find(function (item) { return item.id === partnerId; }) || {};
+      var type = accountKind + (isCustomer ? '_RECEIPT' : '_PAYMENT');
+      var financeDocument = await request('/api/finance/documents', {
+        method: 'POST',
+        body: {
+          companyId: (this.company && this.company.id) || account.companyId,
+          accountId: account.id,
+          partnerId: partnerId,
+          documentType: type,
+          documentDate: new Date().toISOString().slice(0, 10),
+          valueDate: null,
+          currency: account.currency || 'ALL',
+          amount: amount,
+          exchangeRate: 1,
+          description: (isCustomer ? 'Arkëtim nga klienti ' : 'Pagesë furnitori ') +
+            (partner.name || '') + ' për faturën ' + (charge.docNumber || ''),
+          referenceNo: charge.docNumber || '',
+          allocations: [{ businessDocumentId: charge.invoiceId, amount: amount }]
+        }
+      });
+      await request('/api/finance/documents/' + encodeURIComponent(financeDocument.id) + '/post', {
+        method: 'POST',
+        body: {}
+      });
+      this.toast(isCustomer ? 'Arkëtimi u regjistrua dhe fatura u përditësua.' : 'Pagesa u regjistrua dhe detyrimi u ul.');
+      await global.CloudERP.refresh();
+      await this._renderSupplierCard(partnerId, isCustomer);
+    } catch (error) {
+      this.toast(error.message || String(error), 'error');
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  };
+
   var originalViewCompanies = App.view_companies;
   App.view_companies = function () {
     var result = originalViewCompanies.apply(this, arguments);
