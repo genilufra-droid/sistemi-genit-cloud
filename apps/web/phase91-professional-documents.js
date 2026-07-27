@@ -59,7 +59,7 @@ function openPreview(row){
 }
 function install(){
  addStyles();
- document.addEventListener('click',e=>{const b=e.target.closest('button,a,[role="button"]');if(!b)return;const txt=norm([b.textContent,b.title,b.getAttribute('aria-label')].join(' '));if(!/^(shiko|view|hap|open)$/.test(txt))return;const row=b.closest('tr');if(!row||!row.closest('table'))return;const heads=[...(row.closest('table').tHead?.rows?.[0]?.cells||[])].map(c=>norm(c.textContent));if(!heads.some(h=>/dok|fatur|flete|nr|date|magazin|klient|furnitor/.test(h)))return;e.preventDefault();e.stopImmediatePropagation();openPreview(row);},true);
+ document.addEventListener('click',e=>{if(window.CloudERP&&typeof window.CloudERP.request==='function')return;const b=e.target.closest('button,a,[role="button"]');if(!b)return;const txt=norm([b.textContent,b.title,b.getAttribute('aria-label')].join(' '));if(!/^(shiko|view|hap|open)$/.test(txt))return;const row=b.closest('tr');if(!row||!row.closest('table'))return;const heads=[...(row.closest('table').tHead?.rows?.[0]?.cells||[])].map(c=>norm(c.textContent));if(!heads.some(h=>/dok|fatur|flete|nr|date|magazin|klient|furnitor/.test(h)))return;e.preventDefault();e.stopImmediatePropagation();openPreview(row);},true);
 }
 install();window.SGPhase91={openPreview};
 })();
