@@ -243,6 +243,7 @@
     ui.stage.style.display = 'block';
     ui.stage.innerHTML = '<div class="sg80-toolbar"><div><h2>'+esc(tab.title)+'</h2><small>'+esc(tab.subtitle || 'Dokument i hapur në hapësirën e punës')+'</small></div><div class="sg80-actions">'+
       (tab.editAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'edit\')">✏️ Edito</button>' : '')+
+      (tab.flowAction ? '<button class="sg80-btn primary" onclick="App.sg80RunActive(\'flow\')">'+esc(tab.flowLabel || 'Vazhdo')+'</button>' : '')+
       (tab.deleteAction ? '<button class="sg80-btn danger" onclick="App.sg80RunActive(\'delete\')">🗑 Fshi Draft</button>' : '')+
       '<button class="sg80-btn" onclick="App.sg80RunActive(\'print\')">🖨 Print</button>'+
       (tab.pdfAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'pdf\')">📄 PDF</button>' : '')+
@@ -280,6 +281,7 @@
     var tab = W.tabs.find(function (row) { return row.key === W.activeKey; });
     if (!tab) return;
     if (action === 'edit' && typeof tab.editAction === 'function') return tab.editAction();
+    if (action === 'flow' && typeof tab.flowAction === 'function') return tab.flowAction();
     if (action === 'delete' && typeof tab.deleteAction === 'function') return tab.deleteAction();
     if (action === 'pdf' && typeof tab.pdfAction === 'function') return tab.pdfAction();
     if (action === 'print') {
@@ -460,7 +462,15 @@
       if (deleted) App.sg80CloseTab('business:'+id);
       return deleted;
     } : null;
-    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, deleteAction:deleteFn });
+    var flowTarget = type === 'PURCHASE_ORDER' ? 'PURCHASE_RECEIPT' : type === 'PURCHASE_RECEIPT' ? 'PURCHASE_INVOICE' : null;
+    var flowLabel = type === 'PURCHASE_ORDER' ? '📥 Krijo Pranim' : type === 'PURCHASE_RECEIPT' ? '🧾 Krijo Faturë' : '';
+    var flowFn = flowTarget ? async function () {
+      if (typeof App.sg95ConvertCloudTarget !== 'function') return App.toast('Veprimi i dokumentit nuk është ngarkuar.', 'error');
+      var created = await App.sg95ConvertCloudTarget(id,type,flowTarget,true);
+      if (created) App.sg80CloseTab('business:'+id);
+      return created;
+    } : null;
+    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real i biznesit në format A4', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, flowAction:flowFn, flowLabel:flowLabel, deleteAction:deleteFn });
     return doc;
   }
 
