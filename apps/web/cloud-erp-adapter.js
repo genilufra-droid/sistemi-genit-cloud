@@ -206,6 +206,7 @@
     var quantity = lines.reduce(function (total, line) { return total + num(line.quantity); }, 0);
     return {
       id:x.id, companyId:x.companyId, warehouseId:x.warehouseId, partnerId:x.partnerId, docType:x.docType,
+      sourceDocumentId:x.sourceDocumentId || '', sourceDocumentType:x.sourceDocumentType || '',
       docNumber:x.documentNo, date:x.documentDate,
       status:x.status === 'CONFIRMED' && ['PURCHASE_RECEIPT','DELIVERY_NOTE','PURCHASE_INVOICE','SALES_INVOICE'].indexOf(x.docType) >= 0 ? 'POSTED' : x.status,
       notes:x.notes || '', quantity:quantity, totalNet:num(x.totalNet), vatAmount:num(x.totalVat), totalAmount:num(x.totalAmount), lines:lines,
