@@ -156,6 +156,83 @@ export function installPhase3CloudCoreRoutes({
     oldPassword: z.string().min(1).max(128),
     newPassword: z.string().min(8).max(128),
   });
+  const resetBusinessDataSchema = z.object({
+    confirmation: z.literal('FSHI TE DHENAT'),
+  });
+
+  app.post('/api/cloud/reset-business-data', authRequired, requireRoles('SUPER_ADMIN'), async (req, res, next) => {
+    const parsed = resetBusinessDataSchema.safeParse(req.body);
+    if (!parsed.success) return next(requestError('Konfirmimi i fshirjes nuk është i vlefshëm.'));
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [req.user.tenant_id]);
+
+      const protectedTables = new Set([
+        'tenants', 'companies', 'users', 'user_companies', 'warehouses', 'user_warehouses',
+        'tenant_settings', 'system_devices', 'finance_accounts', 'expense_categories',
+        'global_master_records', 'inventory_operation_types', 'mrp_locations',
+      ]);
+      const tableResult = await client.query(`
+        SELECT DISTINCT c.table_name
+        FROM information_schema.columns c
+        JOIN information_schema.tables t
+          ON t.table_schema=c.table_schema AND t.table_name=c.table_name
+        WHERE c.table_schema='public' AND c.column_name='tenant_id' AND t.table_type='BASE TABLE'
+      `);
+      const deletable = tableResult.rows
+        .map((row) => row.table_name)
+        .filter((table) => !protectedTables.has(table));
+      const deletableSet = new Set(deletable);
+      const dependencyResult = await client.query(`
+        SELECT child.relname AS child_table, parent.relname AS parent_table
+        FROM pg_constraint fk
+        JOIN pg_class child ON child.oid=fk.conrelid
+        JOIN pg_class parent ON parent.oid=fk.confrelid
+        JOIN pg_namespace ns ON ns.oid=child.relnamespace
+        WHERE fk.contype='f' AND ns.nspname='public' AND child.oid<>parent.oid
+      `);
+      const dependencies = new Map(deletable.map((table) => [table, new Set()]));
+      for (const row of dependencyResult.rows) {
+        if (deletableSet.has(row.child_table) && deletableSet.has(row.parent_table)) {
+          dependencies.get(row.child_table).add(row.parent_table);
+        }
+      }
+      const ordered = [];
+      const remaining = new Set(deletable);
+      while (remaining.size) {
+        const ready = [...remaining].filter((table) =>
+          ![...remaining].some((other) => other !== table && dependencies.get(other).has(table))
+        );
+        if (!ready.length) ready.push([...remaining].sort()[0]);
+        ready.sort();
+        for (const table of ready) {
+          remaining.delete(table);
+          ordered.push(table);
+        }
+      }
+
+      const deleted = {};
+      for (const table of ordered) {
+        const identifier = `"${table.replaceAll('"', '""')}"`;
+        const result = await client.query(`DELETE FROM ${identifier} WHERE tenant_id=$1`, [req.user.tenant_id]);
+        if (result.rowCount) deleted[table] = result.rowCount;
+      }
+      await audit({
+        tenantId: req.user.tenant_id, userId: req.user.id, action: 'BUSINESS_DATA_RESET',
+        entityType: 'tenant', entityId: req.user.tenant_id, metadata: { deleted }, ip: req.ip,
+      }, client);
+      await client.query('COMMIT');
+      emitTenant(req.user.tenant_id, { type: 'BUSINESS_DATA_RESET' });
+      res.json({ ok: true, deleted });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      next(error);
+    } finally {
+      client.release();
+    }
+  });
 
   app.get('/api/cloud/capabilities', authRequired, async (req, res, next) => {
     try {
