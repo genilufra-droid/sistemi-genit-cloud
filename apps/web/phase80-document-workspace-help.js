@@ -1,4 +1,6 @@
-/* SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START — Sistemi Genit */
+/* SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START — Sistemi Genit
+ * Deploy revision: universal-real-document-exports-2026-07-27
+ */
 (function (global) {
   'use strict';
 
