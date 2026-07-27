@@ -243,7 +243,7 @@
     ui.stage.style.display = 'block';
     ui.stage.innerHTML = '<div class="sg80-toolbar"><div><h2>'+esc(tab.title)+'</h2><small>'+esc(tab.subtitle || 'Dokument i hapur në hapësirën e punës')+'</small></div><div class="sg80-actions">'+
       (tab.editAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'edit\')">✏️ Edito</button>' : '')+
-      (tab.flowAction ? '<button class="sg80-btn primary" onclick="App.sg80RunActive(\'flow\')">'+esc(tab.flowLabel || 'Vazhdo')+'</button>' : '')+
+      (tab.flowAction ? '<button class="sg80-btn primary" data-document-flow onclick="App.sg80RunActive(\'flow\',this)">'+esc(tab.flowLabel || 'Vazhdo')+'</button>' : '')+
       (tab.deleteAction ? '<button class="sg80-btn danger" onclick="App.sg80RunActive(\'delete\')">🗑 Fshi Draft</button>' : '')+
       '<button class="sg80-btn" onclick="App.sg80RunActive(\'print\')">🖨 Print</button>'+
       (tab.pdfAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'pdf\')">📄 PDF</button>' : '')+
@@ -277,11 +277,23 @@
     if (wasActive) W.activeKey = W.tabs[index - 1] ? W.tabs[index - 1].key : (W.tabs[index] ? W.tabs[index].key : 'module');
     renderActiveTab();
   };
-  App.sg80RunActive = function (action) {
+  App.sg80RunActive = function (action, button) {
     var tab = W.tabs.find(function (row) { return row.key === W.activeKey; });
     if (!tab) return;
     if (action === 'edit' && typeof tab.editAction === 'function') return tab.editAction();
-    if (action === 'flow' && typeof tab.flowAction === 'function') return tab.flowAction();
+    if (action === 'flow' && typeof tab.flowAction === 'function') {
+      if (button && button.disabled) return;
+      var originalText = button ? button.textContent : '';
+      if (button) { button.disabled = true; button.textContent = '⏳ Duke krijuar…'; }
+      return Promise.resolve(tab.flowAction()).then(function (result) {
+        if (!result && button && button.isConnected) { button.disabled = false; button.textContent = originalText; }
+        return result;
+      }).catch(function (error) {
+        if (button && button.isConnected) { button.disabled = false; button.textContent = originalText; }
+        App.toast(error.message || String(error), 'error');
+        return null;
+      });
+    }
     if (action === 'delete' && typeof tab.deleteAction === 'function') return tab.deleteAction();
     if (action === 'pdf' && typeof tab.pdfAction === 'function') return tab.pdfAction();
     if (action === 'print') {
