@@ -153,6 +153,10 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
       {target:'SALES_INVOICE',type:'salesInvoice',label:'Krijo Faturë'}
     ]
   };
+  var CONVERSION_STORES={
+    PURCHASE_ORDER:'purchaseOrders',PURCHASE_RECEIPT:'purchaseReceipts',PURCHASE_INVOICE:'purchaseInvoices',
+    SALES_ORDER:'salesOrders',DELIVERY_NOTE:'deliveryNotes',SALES_INVOICE:'salesInvoices'
+  };
   App.sg95ConvertCloudDocument=async function(id,sourceType,conversion){
     try{
       var created=camel(await Cloud.request('/api/documents/'+encodeURIComponent(id)+'/convert',{
@@ -201,13 +205,18 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
         cell.appendChild(button);
       }
       if(doc.status!=='CANCELLED')(CONVERSIONS[type]||[]).forEach(function(conversion){
+        var created=((App.data[CONVERSION_STORES[conversion.target]]||[]).find(function(row){
+          return row.sourceDocumentId===doc.id;
+        }));
         var convertButton=document.createElement('button');
         convertButton.type='button';
-        convertButton.className='btn btn-blue btn-sm';
-        convertButton.textContent=conversion.label;
+        convertButton.className='btn '+(created?'btn-green':'btn-blue')+' btn-sm';
+        convertButton.textContent=created?'✓ '+(conversion.target.indexOf('INVOICE')>=0?'Fatura u krijua':'Dokumenti u krijua'):conversion.label;
+        if(created)convertButton.disabled=true;
         convertButton.addEventListener('click',function(event){
           event.preventDefault();
           event.stopPropagation();
+          if(created)return;
           App.sg95ConvertCloudDocument(doc.id,type,conversion);
         });
         cell.appendChild(convertButton);
