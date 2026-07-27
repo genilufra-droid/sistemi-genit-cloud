@@ -499,6 +499,23 @@
     return this.deleteCloudDocument(id,viewByType[type] || this.currentView);
   };
 
+  App.wipeData = async function () {
+    try {
+      Auth.requirePermission('settings.manage');
+      if (!global.confirm('Kujdes: do të fshihen të gjitha të dhënat e punës dhe të provës. Kompania, përdoruesit, magazinat dhe konfigurimet bazë do të ruhen. Të vazhdojmë?')) return;
+      if (!global.confirm('Ky veprim nuk kthehet mbrapsht. Konfirmoni për herë të dytë fshirjen.')) return;
+      await request('/api/cloud/reset-business-data', {
+        method: 'POST',
+        body: { confirmation: 'FSHI TE DHENAT' }
+      });
+      this.toast('Të dhënat e punës u fshinë. Sistemi është gati për të dhënat reale.');
+      await global.CloudERP.refresh();
+      this.navigate('dashboard');
+    } catch (error) {
+      this.toast(error.message || String(error), 'error');
+    }
+  };
+
   Auth.bootstrap=bootstrap; Auth.login=login; Auth.logout=logout; Auth.getCurrentUser=function(){return currentUser;};
   Auth.hasPermission=hasPermission; Auth.requirePermission=function(permission){if(!hasPermission(permission))throw new Error('Nuk keni leje për këtë veprim.');return true;}; Auth.canView=canView;
   Auth.listUsers=listUsers; Auth.createUser=createUser; Auth.updateUser=updateUser; Auth.resetPassword=resetPassword; Auth.changeOwnPassword=changeOwnPassword;
