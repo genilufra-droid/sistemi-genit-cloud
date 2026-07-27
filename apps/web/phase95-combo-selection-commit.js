@@ -208,15 +208,16 @@ if(App&&Cloud&&typeof Cloud.request==='function'){
         var created=((App.data[CONVERSION_STORES[conversion.target]]||[]).find(function(row){
           return row.sourceDocumentId===doc.id;
         }));
+        var completed=created&&created.status!=='DRAFT';
         var convertButton=document.createElement('button');
         convertButton.type='button';
-        convertButton.className='btn '+(created?'btn-green':'btn-blue')+' btn-sm';
-        convertButton.textContent=created?'✓ '+(conversion.target.indexOf('INVOICE')>=0?'Fatura u krijua':'Dokumenti u krijua'):conversion.label;
-        if(created)convertButton.disabled=true;
+        convertButton.className='btn '+(completed?'btn-green':'btn-blue')+' btn-sm';
+        convertButton.textContent=completed?'✓ '+(conversion.target.indexOf('INVOICE')>=0?'Fatura u krijua':'Dokumenti u krijua'):(created&&conversion.target.indexOf('INVOICE')>=0?'✓ Konfirmo Faturën':conversion.label);
+        if(completed)convertButton.disabled=true;
         convertButton.addEventListener('click',function(event){
           event.preventDefault();
           event.stopPropagation();
-          if(created)return;
+          if(completed)return;
           App.sg95ConvertCloudDocument(doc.id,type,conversion);
         });
         cell.appendChild(convertButton);
