@@ -224,7 +224,7 @@ export function installPhase3CloudCoreRoutes({
         entityType: 'tenant', entityId: req.user.tenant_id, metadata: { deleted }, ip: req.ip,
       }, client);
       await client.query('COMMIT');
-      emitTenant(req.user.tenant_id, { type: 'BUSINESS_DATA_RESET' });
+      emitTenant(req.user.tenant_id, 'system', { action: 'business-data-reset' });
       res.json({ ok: true, deleted });
     } catch (error) {
       await client.query('ROLLBACK');
