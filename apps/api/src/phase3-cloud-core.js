@@ -214,10 +214,30 @@ export function installPhase3CloudCoreRoutes({
       }
 
       const deleted = {};
-      for (const table of ordered) {
-        const identifier = `"${table.replaceAll('"', '""')}"`;
-        const result = await client.query(`DELETE FROM ${identifier} WHERE tenant_id=$1`, [req.user.tenant_id]);
-        if (result.rowCount) deleted[table] = result.rowCount;
+      let pending = ordered.slice();
+      let blocked = [];
+      while (pending.length) {
+        const nextPending = [];
+        blocked = [];
+        for (const table of pending) {
+          const identifier = `"${table.replaceAll('"', '""')}"`;
+          await client.query('SAVEPOINT reset_table');
+          try {
+            const result = await client.query(`DELETE FROM ${identifier} WHERE tenant_id=$1`, [req.user.tenant_id]);
+            await client.query('RELEASE SAVEPOINT reset_table');
+            if (result.rowCount) deleted[table] = result.rowCount;
+          } catch (error) {
+            await client.query('ROLLBACK TO SAVEPOINT reset_table');
+            await client.query('RELEASE SAVEPOINT reset_table');
+            if (error.code !== '23503') throw error;
+            nextPending.push(table);
+            blocked.push(`${table}: ${error.constraint || 'foreign_key'}`);
+          }
+        }
+        if (nextPending.length === pending.length) {
+          throw requestError(`Fshirja u bllokua nga lidhjet: ${blocked.join(', ')}`, 409);
+        }
+        pending = nextPending;
       }
       await audit({
         tenantId: req.user.tenant_id, userId: req.user.id, action: 'BUSINESS_DATA_RESET',
