@@ -222,7 +222,10 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         [req.user.tenant_id,source.id,targetType],
       );
       if(existing.rows[0]) {
-        if(['PURCHASE_INVOICE','SALES_INVOICE'].includes(targetType) && existing.rows[0].status==='DRAFT') {
+        const autoConfirmExisting=['PURCHASE_RECEIPT','PURCHASE_INVOICE','DELIVERY_NOTE','SALES_INVOICE'].includes(targetType);
+        if(autoConfirmExisting && existing.rows[0].status==='DRAFT') {
+          const existingItems=await readItems(client,existing.rows[0].id);
+          await applyStockMovements(client,existing.rows[0],existingItems,req.user);
           const confirmed = await client.query(
             "UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),updated_at=NOW() WHERE id=$1 RETURNING *",
             [existing.rows[0].id],
@@ -243,7 +246,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       if(!sourceItems.length) throw requestError('Dokumenti burim nuk ka artikuj.',409);
       const id=randomUUID();
       const documentNo=await nextDocumentNo(client,req.user.tenant_id,source.company_id,targetType);
-      const autoConfirm=['PURCHASE_INVOICE','SALES_INVOICE'].includes(targetType);
+      const autoConfirm=['PURCHASE_RECEIPT','PURCHASE_INVOICE','DELIVERY_NOTE','SALES_INVOICE'].includes(targetType);
       const {rows}=await client.query(`
         INSERT INTO business_documents(
           id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,
@@ -263,6 +266,9 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
           randomUUID(),id,item.product_id,item.description,item.unit,item.coefficient,item.quantity,item.free_quantity,
           item.unit_price,item.vat_rate,item.line_net,item.line_vat,item.line_total,
         ]);
+      }
+      if(autoConfirm) {
+        await applyStockMovements(client,{...rows[0],id,doc_type:targetType,document_no:documentNo},sourceItems,req.user);
       }
       await audit({
         tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONVERT',entityType:'business_document',
@@ -287,26 +293,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       if(document.status!=='DRAFT') throw requestError('Vetëm dokumenti Draft mund të konfirmohet.',409);
       const items = await readItems(client,document.id);
       const sign = STOCK_TYPES[document.doc_type];
-      if(sign) {
-        if(!document.warehouse_id) throw requestError('Zgjidhni magazinën para konfirmimit.',400);
-        for(const item of items) {
-          const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);
-          if(sign<0) {
-            const available=await client.query(
-              'SELECT COALESCE(SUM(quantity_base),0)::numeric AS qty FROM stock_movements WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND product_id=$4',
-              [req.user.tenant_id,document.company_id,document.warehouse_id,item.product_id],
-            );
-            if(Number(available.rows[0].qty)+1e-9<quantityBase) {
-              throw requestError(`Gjendje e pamjaftueshme për ${item.description}.`,409);
-            }
-          }
-          await insertStockMovement(client, {
-            tenantId:req.user.tenant_id, companyId:document.company_id, warehouseId:document.warehouse_id,
-            productId:item.product_id, movementType:document.doc_type, quantityBase:sign*quantityBase,
-            unitCost:item.unit_price, referenceId:document.id, referenceNo:document.document_no, userId:req.user.id,
-          });
-        }
-      }
+      await applyStockMovements(client,document,items,req.user);
       await client.query("UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),cancelled_at=NULL,updated_at=NOW() WHERE id=$1",[document.id]);
       await audit({
         tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONFIRM',entityType:'business_document',
@@ -439,6 +426,36 @@ async function insertStockMovement(client,input) {
     randomUUID(),input.tenantId,input.companyId,input.warehouseId,input.productId,input.movementType,
     input.quantityBase,input.unitCost,input.referenceId,input.referenceNo,input.userId,
   ]);
+}
+
+async function applyStockMovements(client,document,items,user) {
+  const sign=STOCK_TYPES[document.doc_type];
+  if(!sign) return;
+  if(!document.warehouse_id) throw requestError('Zgjidhni magazinën para konfirmimit.',400);
+  const alreadyPosted=await client.query(
+    `SELECT 1 FROM stock_movements
+     WHERE tenant_id=$1 AND reference_type='business_document' AND reference_id=$2
+       AND movement_type=$3 LIMIT 1`,
+    [user.tenant_id,document.id,document.doc_type],
+  );
+  if(alreadyPosted.rowCount) return;
+  for(const item of items) {
+    const quantityBase=(Number(item.quantity)+Number(item.free_quantity))*Number(item.coefficient);
+    if(sign<0) {
+      const available=await client.query(
+        'SELECT COALESCE(SUM(quantity_base),0)::numeric AS qty FROM stock_movements WHERE tenant_id=$1 AND company_id=$2 AND warehouse_id=$3 AND product_id=$4',
+        [user.tenant_id,document.company_id,document.warehouse_id,item.product_id],
+      );
+      if(Number(available.rows[0].qty)+1e-9<quantityBase) {
+        throw requestError(`Gjendje e pamjaftueshme për ${item.description}.`,409);
+      }
+    }
+    await insertStockMovement(client,{
+      tenantId:user.tenant_id,companyId:document.company_id,warehouseId:document.warehouse_id,
+      productId:item.product_id,movementType:document.doc_type,quantityBase:sign*quantityBase,
+      unitCost:item.unit_price,referenceId:document.id,referenceNo:document.document_no,userId:user.id,
+    });
+  }
 }
 
 async function nextDocumentNo(client,tenantId,companyId,type) {
