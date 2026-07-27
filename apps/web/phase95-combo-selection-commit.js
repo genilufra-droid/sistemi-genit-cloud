@@ -34,6 +34,7 @@ function isSaveButton(button){return /^(ruaj|regjistro|konfirmo|save|krijo)/.tes
 document.addEventListener('click',function(e){
   var button=e.target.closest('button,[role="button"],input[type="submit"]');
   if(!button||!isSaveButton(button))return;
+  if(button.closest('.sg80-toolbar,.sg95-flow-actions')||button.hasAttribute('data-document-flow'))return;
   var scope=button.closest('.modal-content,form,#modal-box')||document;
   if(!resolveAll(scope)){
     e.preventDefault();e.stopImmediatePropagation();
