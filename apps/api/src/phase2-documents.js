@@ -443,7 +443,14 @@ async function insertStockMovement(client,input) {
 
 async function nextDocumentNo(client,tenantId,companyId,type) {
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`${tenantId}:${companyId}:${type}`]);
-  const {rows}=await client.query('SELECT COUNT(*)::int+1 AS n FROM business_documents WHERE tenant_id=$1 AND company_id=$2 AND doc_type=$3',[tenantId,companyId,type]);
+  const {rows}=await client.query(`
+    SELECT COALESCE(
+      MAX((substring(document_no FROM '([0-9]+)$'))::int),
+      0
+    ) + 1 AS n
+    FROM business_documents
+    WHERE tenant_id=$1 AND company_id=$2 AND doc_type=$3
+  `,[tenantId,companyId,type]);
   const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'FH',PURCHASE_INVOICE:'FB',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS'}[type]||'DOK';
   return `${prefix}-${new Date().getFullYear()}-${String(rows[0].n).padStart(5,'0')}`;
 }
