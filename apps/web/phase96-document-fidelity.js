@@ -184,9 +184,15 @@
    * engine available before switching to the clean document view.
    */
   function startFidelityDocument(){boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});}
+  function startAfterBootstrap(){
+    /* Auth/bootstrap also uses the load event.  Let it finish its async DOM
+       setup before rendering the standalone document, otherwise it attempts
+       to write into an A4 body that has already replaced the application. */
+    global.setTimeout(startFidelityDocument,1200);
+  }
   if(fidelityMode){
-    if(document.readyState==='complete')startFidelityDocument();
-    else global.addEventListener('load',startFidelityDocument,{once:true});
+    if(document.readyState==='complete')startAfterBootstrap();
+    else global.addEventListener('load',startAfterBootstrap,{once:true});
   }
   global.SGPhase96={openDocument:openDocument,url:fidelityUrl,excel:excel,pdf:pdf};
 })(window);
