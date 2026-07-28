@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const html = fs.readFileSync(new URL('../apps/web/dist/index.html', import.meta.url), 'utf8');
+
+const requiredMarkers = [
+  'SG_PHASE83_REAL_DOCUMENT_LINKS_START',
+  'SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START',
+  'SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START',
+  'SG_PHASE87_DIRECT_REAL_DOCUMENT_TAB_START',
+  'SG_PHASE88_DIRECT_DOCUMENT_RENDERER_START',
+  'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
+  'SG_PHASE92_UNIVERSAL_ACTIONS_START',
+];
+for (const marker of requiredMarkers) {
+  assert.ok(html.includes(marker), `Build-i final duhet të përmbajë ${marker}.`);
+}
+
+const expectedDocuments = [
+  'FATURË BLERJE',
+  'FATURË SHITJE',
+  'FLETË HYRJE',
+  'FLETË DALJE',
+  'MANDAT ARKËTIMI',
+  'MANDAT PAGESE',
+];
+for (const label of expectedDocuments) {
+  assert.ok(html.includes(label), `Mungon modeli i dokumentit: ${label}.`);
+}
+
+const requiredExportMethods = [
+  'exportInvoicePDF',
+  'exportInvoiceExcel',
+  'exportWeightFormPDF',
+  'exportWeightFormExcel',
+  'exportCashDocumentPDF',
+  'exportCashDocumentExcel',
+  'exportBankTransactionPDF',
+  'exportBankTransactionExcel',
+  'exportCurrentViewPDF',
+  'exportCurrentViewExcel',
+  'exportCurrentReportPDF',
+  'exportCurrentReportExcel',
+];
+for (const method of requiredExportMethods) {
+  assert.match(
+    html,
+    new RegExp(`App\\.${method}\\s*=\\s*(?:async\\s*)?function\\b`),
+    `Mungon implementimi real App.${method}.`,
+  );
+}
+assert.ok(html.includes('new jsPDF'), 'PDF duhet të gjenerohet me motorin real jsPDF.');
+assert.ok(html.includes('XLSX.utils.book_new'), 'Excel duhet të gjenerohet si workbook real XLSX.');
+assert.ok(html.includes('DesktopIO.saveWorkbook'), 'Workbook-i duhet të ruhet si skedar real.');
+
+const appDefinitions = new Set([
+  ...[...html.matchAll(/App\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?function\b/g)].map((match) => match[1]),
+  ...[...html.matchAll(/App\.([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*;/g)].map((match) => match[1]),
+]);
+const appObject = html.match(/const App\s*=\s*\{([\s\S]*?)\n\s*\};/);
+if (appObject) {
+  for (const match of appObject[1].matchAll(/^\s+([A-Za-z_$][\w$]*)\s*\(/gm)) {
+    appDefinitions.add(match[1]);
+  }
+}
+const onclickCalls = [...html.matchAll(/onclick\s*=\s*["'][^"']*?App\.([A-Za-z_$][\w$]*)\s*\(/g)]
+  .map((match) => match[1]);
+const unresolved = [...new Set(onclickCalls.filter((name) => !appDefinitions.has(name)))].sort();
+assert.deepEqual(unresolved, [], `Butona onclick pa funksion: ${unresolved.join(', ')}`);
+
+assert.ok(
+  !html.includes("actions.push(['Print / PDF / Excel',()=>invoke(out.view,scope)"),
+  'Menuja universale nuk duhet ta paraqesë veprimin Shiko si eksport.',
+);
+
+const workflowContracts = [
+  ['PURCHASE_ORDER', 'PURCHASE_RECEIPT'],
+  ['PURCHASE_RECEIPT', 'PURCHASE_INVOICE'],
+  ['SALES_QUOTE', 'SALES_ORDER'],
+  ['SALES_ORDER', 'DELIVERY'],
+  ['DELIVERY', 'SALES_INVOICE'],
+];
+for (const [source, target] of workflowContracts) {
+  assert.ok(
+    html.includes(source) && html.includes(target),
+    `Mungon rrjedha Odoo ${source} → ${target}.`,
+  );
+}
+
+console.log(`UI_DOCUMENT_CONTRACT_SUCCESS buttons=${onclickCalls.length} exports=${requiredExportMethods.length} documents=${expectedDocuments.length}`);
