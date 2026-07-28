@@ -21,7 +21,7 @@
   function safe(value) { return String(value||'Dokument').replace(/[^a-z0-9ëç_-]+/gi,'_').replace(/^_+|_+$/g,''); }
   function camel(row) { var out={}; Object.keys(row||{}).forEach(function(k){out[k.replace(/_([a-z])/g,function(_m,c){return c.toUpperCase();})]=row[k];}); return out; }
   function fidelityUrl(id,kind) { var url=new URL(global.location.href); url.searchParams.set('sgdocId',id);url.searchParams.set('sgdocKind',kind||'business_document'); url.searchParams.set('sgdocMode','fidelity'); url.hash='document'; return url.toString(); }
-  function openDocument(id,kind) { if (!id) return; global.open(fidelityUrl(id,kind),'_blank','noopener'); }
+  function openDocument(id,kind) { if (!id) return; global.location.href=fidelityUrl(id,kind); }
 
   function linkedHtml(doc) {
     if(doc.traceNodes&&doc.traceNodes.length)return '<section class="sg96-trace"><h3>Gjurmueshmëria e dokumentit — nga formulari i peshës te pagesa</h3><div>'+doc.traceNodes.map(function(row){return '<button data-open-doc="'+esc(row.id)+'" data-open-kind="'+esc(row.kind)+'" class="'+(row.current?'current':'')+'"><small>'+esc(row.kind==='weight_ticket'?'Origjina':row.kind==='finance_document'?(row.accountKind==='BANK'?'Banka':'Arka'):'Dokument')+'</small><strong>'+esc(row.documentNo||typeLabel(row.label))+'</strong><span>'+esc(typeLabel(row.label))+' · '+esc(row.status||'')+'</span></button>';}).join('')+'</div></section>';
@@ -107,7 +107,7 @@
       current.traceNodes=(trace.nodes||[]).map(camel);bodyHtml=documentHtml(current);
     }
     styles();document.body.innerHTML='<div class="sg96-tools"><button data-back>Kthehu</button><button data-print>Print</button><button data-pdf>PDF</button><button data-excel>Excel</button></div><main class="sg96-doc">'+bodyHtml+'</main>';
-    document.querySelector('[data-back]').onclick=function(){global.close();};document.querySelector('[data-print]').onclick=function(){global.print();};document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
+    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=function(){global.print();};document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
     document.body.onclick=function(e){var b=e.target.closest('[data-open-doc]');if(b)openDocument(b.dataset.openDoc,b.dataset.openKind||'business_document');};
   }
 
