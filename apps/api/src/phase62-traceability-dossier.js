@@ -399,7 +399,10 @@ export function installPhase62TraceabilityDossierRoutes({ app, pool, authRequire
       const approved = await client.query(`SELECT * FROM trace_intake_quality_checks WHERE dossier_id=$1 AND result='APPROVED' ORDER BY check_date DESC LIMIT 1`, [dossier.id]);
       if (!approved.rowCount) throw requestError('Fatura e blerjes krijohet vetëm pas Kontrollit të Cilësisë të aprovuar.',409);
       const duplicate = await client.query(`SELECT * FROM business_documents WHERE trace_dossier_id=$1 AND doc_type='PURCHASE_INVOICE' AND status<>'CANCELLED' LIMIT 1`, [dossier.id]);
-      if (duplicate.rowCount) return res.json(duplicate.rows[0]);
+      if (duplicate.rowCount) {
+        await client.query('COMMIT');
+        return res.json({...duplicate.rows[0],documentNo:duplicate.rows[0].document_no,alreadyCreated:true});
+      }
       const documentDate = input.documentDate || String(weight.document_date).slice(0,10);
       const documentNo = input.documentNo || await nextDocumentNo(client,req.user.tenant_id,weight.company_id,'FB',documentDate);
       const id = randomUUID();
@@ -427,7 +430,28 @@ export function installPhase62TraceabilityDossierRoutes({ app, pool, authRequire
       const { weight, dossier } = await ensureWeightAndDossier(client,req.user,req.params.id,true);
       await assertCompanyAccess(req.user,weight.company_id,client);
       if (!dossier) throw requestError('Dosja e gjurmueshmërisë mungon.',409);
-      if (weight.status !== 'DRAFT' || weight.lot_id) throw requestError('Fletë-Hyrja dhe loti janë krijuar më parë.',409);
+      if (weight.lot_id || weight.receipt_document_id) {
+        const existingReceipt = await client.query(
+          `SELECT d.id,d.document_no,l.id AS lot_id,l.lot_number,l.display_label,l.quantity_created,l.status AS lot_status
+           FROM business_documents d
+           LEFT JOIN trace_lots l ON l.source_document_id=d.id
+           WHERE d.tenant_id=$1 AND d.trace_dossier_id=$2 AND d.doc_type='PURCHASE_RECEIPT' AND d.status<>'CANCELLED'
+           ORDER BY d.created_at DESC LIMIT 1`,
+          [req.user.tenant_id,dossier.id],
+        );
+        if (existingReceipt.rows[0]) {
+          const row=existingReceipt.rows[0];
+          await client.query('COMMIT');
+          return res.json({
+            dossierId:dossier.id,
+            receipt:{id:row.id,documentNo:row.document_no},
+            lot:{id:row.lot_id,lotNumber:row.lot_number,label:row.display_label,quantity:num(row.quantity_created),status:row.lot_status},
+            alreadyCreated:true,
+          });
+        }
+        throw requestError('Fletë-Hyrja dhe loti janë krijuar më parë.',409);
+      }
+      if (weight.status !== 'DRAFT') throw requestError('Formulari i Peshës nuk është më Draft.',409);
       const approved = await client.query(`SELECT * FROM trace_intake_quality_checks WHERE dossier_id=$1 AND result='APPROVED' ORDER BY check_date DESC LIMIT 1`, [dossier.id]);
       if (!approved.rowCount) throw requestError('Fletë-Hyrja krijohet vetëm pas Kontrollit të Cilësisë të aprovuar.',409);
       const invoice = await client.query(`SELECT * FROM business_documents WHERE trace_dossier_id=$1 AND doc_type='PURCHASE_INVOICE' AND status='CONFIRMED' ORDER BY created_at DESC LIMIT 1`, [dossier.id]);
@@ -440,8 +464,8 @@ export function installPhase62TraceabilityDossierRoutes({ app, pool, authRequire
       const lotId = randomUUID();
       const total = num(weight.total_value);
       const quantity = num(weight.accepted_weight);
-      await client.query(`INSERT INTO business_documents(id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,total_net,total_vat,total_amount,created_by,confirmed_at,trace_dossier_id)
-        VALUES($1,$2,$3,$4,$5,'PURCHASE_RECEIPT',$6,$7,'CONFIRMED',$8,$9,0,$9,$10,NOW(),$11)`, [receiptId,req.user.tenant_id,weight.company_id,weight.warehouse_id,weight.supplier_id,documentNo,documentDate,input.notes||`Fletë-Hyrje nga ${weight.document_no}`,total,req.user.id,dossier.id]);
+      await client.query(`INSERT INTO business_documents(id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,total_net,total_vat,total_amount,created_by,confirmed_at,trace_dossier_id,source_document_id,source_document_type)
+        VALUES($1,$2,$3,$4,$5,'PURCHASE_RECEIPT',$6,$7,'CONFIRMED',$8,$9,0,$9,$10,NOW(),$11,$12,'PURCHASE_INVOICE')`, [receiptId,req.user.tenant_id,weight.company_id,weight.warehouse_id,weight.supplier_id,documentNo,documentDate,input.notes||`Fletë-Hyrje nga ${weight.document_no}`,total,req.user.id,dossier.id,invoice.rows[0].id]);
       await client.query(`INSERT INTO business_document_items(id,document_id,product_id,description,unit,coefficient,quantity,free_quantity,unit_price,vat_rate,line_net,line_vat,line_total)
         VALUES($1,$2,$3,$4,$5,1,$6,0,$7,0,$8,0,$8)`, [randomUUID(),receiptId,weight.product_id,weight.product_name,weight.base_unit||'kg',quantity,num(weight.unit_price),total]);
       await client.query(`INSERT INTO trace_lots(id,tenant_id,company_id,warehouse_id,product_id,supplier_id,farm_id,parcel_id,source_weight_ticket_id,source_document_id,lot_number,lot_type,status,quality_status,harvest_date,production_date,quantity_created,quantity_available,quantity_consumed,base_unit,unit_cost,botanical_name,plant_part,location_text,notes,created_by,trace_dossier_id,display_label,packaging_count,packaging_unit)
