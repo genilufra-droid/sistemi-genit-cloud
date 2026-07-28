@@ -23,6 +23,17 @@ async function api(path, { method = 'GET', token, body } = {}) {
   return data;
 }
 
+async function expectStatus(status, path, options, message) {
+  try {
+    await api(path, options);
+    assert.fail(`${message}: kërkesa kaloi pa u bllokuar.`);
+  } catch (error) {
+    if (error.code === 'ERR_ASSERTION') throw error;
+    assert.equal(error.status, status, `${message}: pritej HTTP ${status}, por u mor ${error.status}.`);
+    return error.data;
+  }
+}
+
 const stamp = Date.now();
 const setup = await api('/api/setup/admin', {
   method: 'POST',
@@ -41,6 +52,225 @@ const token = setup.token;
 const companyId = setup.companyId;
 const warehouseId = setup.warehouseId;
 assert.ok(token && companyId && warehouseId, 'Konfigurimi fillestar duhet të kthejë token, kompani dhe magazinë.');
+
+const secondCompany = await api('/api/companies', {
+  method: 'POST',
+  token,
+  body: {
+    name: 'Kompania e Izoluar B',
+    nipt: 'L87654321B',
+    address: 'Shkodër',
+    phone: '',
+    email: '',
+    currency: 'ALL',
+  },
+});
+const secondWarehouse = await api('/api/warehouses', {
+  method: 'POST',
+  token,
+  body: {
+    companyId: secondCompany.id,
+    name: 'Magazina B',
+    code: 'MB',
+    address: 'Shkodër',
+  },
+});
+const secondProduct = await api('/api/products', {
+  method: 'POST',
+  token,
+  body: {
+    companyId: secondCompany.id,
+    categoryId: null,
+    code: `PRIVATE-B-${stamp}`,
+    barcode: '',
+    name: 'Artikull Privat i Kompanisë B',
+    baseUnit: 'kg',
+    packUnit: 'thes',
+    palletUnit: 'paletë',
+    packCoefficient: 1,
+    palletCoefficient: 1,
+    purchasePrice: 50,
+    salePrice: 80,
+    vatRate: 20,
+    active: true,
+  },
+});
+const secondSupplier = await api('/api/partners', {
+  method: 'POST',
+  token,
+  body: {
+    companyId: secondCompany.id,
+    partnerType: 'SUPPLIER',
+    code: `PRIVATE-F-${stamp}`,
+    name: 'Furnitor Privat i Kompanisë B',
+    nipt: 'K87654321B',
+    address: 'Shkodër',
+    city: 'Shkodër',
+    phone: '',
+    email: '',
+    creditLimit: 0,
+    active: true,
+  },
+});
+const secondDocument = await api('/api/documents', {
+  method: 'POST',
+  token,
+  body: {
+    companyId: secondCompany.id,
+    warehouseId: secondWarehouse.id,
+    partnerId: secondSupplier.id,
+    docType: 'PURCHASE_ORDER',
+    documentDate: '2026-07-28',
+    notes: 'Dokument privat për provën e izolimit',
+    items: [{
+      productId: secondProduct.id,
+      unit: 'kg',
+      coefficient: 1,
+      quantity: 2,
+      freeQuantity: 0,
+      unitPrice: 50,
+      vatRate: 20,
+    }],
+  },
+});
+
+const companyAdminUsername = `company_admin_${stamp}`;
+await api('/api/users', {
+  method: 'POST',
+  token,
+  body: {
+    fullName: 'Administrator Kompanie A',
+    username: companyAdminUsername,
+    email: `${companyAdminUsername}@example.com`,
+    password: 'CompanyAdmin123!',
+    role: 'COMPANY_ADMIN',
+    companyIds: [companyId],
+    warehouseIds: [warehouseId],
+  },
+});
+const companyAdminLogin = await api('/api/auth/login', {
+  method: 'POST',
+  body: { username: companyAdminUsername, password: 'CompanyAdmin123!' },
+});
+const companyAdminToken = companyAdminLogin.token;
+
+const auditorUsername = `auditor_${stamp}`;
+await api('/api/users', {
+  method: 'POST',
+  token,
+  body: {
+    fullName: 'Auditues Vetëm Lexim',
+    username: auditorUsername,
+    email: `${auditorUsername}@example.com`,
+    password: 'AuditorReadOnly123!',
+    role: 'AUDITOR',
+    companyIds: [companyId],
+    warehouseIds: [warehouseId],
+  },
+});
+const auditorLogin = await api('/api/auth/login', {
+  method: 'POST',
+  body: { username: auditorUsername, password: 'AuditorReadOnly123!' },
+});
+const auditorToken = auditorLogin.token;
+
+const companyAdminMe = await api('/api/auth/me', { token: companyAdminToken });
+assert.deepEqual(companyAdminMe.companyIds, [companyId], 'Administratori i kompanisë duhet të ketë vetëm kompaninë A.');
+const scopedCompanies = await api('/api/companies', { token: companyAdminToken });
+assert.deepEqual(scopedCompanies.map((company) => company.id), [companyId], 'Lista e kompanive nuk duhet të ekspozojë kompaninë B.');
+const scopedProducts = await api('/api/products', { token: companyAdminToken });
+assert.ok(!scopedProducts.some((item) => item.id === secondProduct.id), 'Lista e artikujve nuk duhet të ekspozojë artikullin e kompanisë B.');
+const scopedDocuments = await api('/api/documents?type=PURCHASE_ORDER', { token: companyAdminToken });
+assert.ok(!scopedDocuments.some((item) => item.id === secondDocument.id), 'Lista e dokumenteve nuk duhet të ekspozojë dokumentin e kompanisë B.');
+
+await expectStatus(403, `/api/products/${secondProduct.id}`, {
+  token: companyAdminToken,
+}, 'Leximi direkt i artikullit të kompanisë B duhet të bllokohet');
+await expectStatus(403, `/api/products/${secondProduct.id}`, {
+  method: 'PATCH',
+  token: companyAdminToken,
+  body: {
+    companyId: secondCompany.id,
+    categoryId: null,
+    code: `ATTACK-${stamp}`,
+    barcode: '',
+    name: 'Ndryshim i palejuar',
+    baseUnit: 'kg',
+    packUnit: 'thes',
+    palletUnit: 'paletë',
+    packCoefficient: 1,
+    palletCoefficient: 1,
+    purchasePrice: 1,
+    salePrice: 1,
+    vatRate: 0,
+    active: true,
+  },
+}, 'Ndryshimi i artikullit të kompanisë B duhet të bllokohet');
+await expectStatus(403, `/api/products/${secondProduct.id}`, {
+  method: 'DELETE',
+  token: companyAdminToken,
+}, 'Fshirja e artikullit të kompanisë B duhet të bllokohet');
+await expectStatus(403, `/api/documents/${secondDocument.id}`, {
+  token: companyAdminToken,
+}, 'Leximi direkt i dokumentit të kompanisë B duhet të bllokohet');
+await expectStatus(403, `/api/documents/${secondDocument.id}/convert`, {
+  method: 'POST',
+  token: companyAdminToken,
+  body: { targetType: 'PURCHASE_RECEIPT' },
+}, 'Konvertimi i dokumentit të kompanisë B duhet të bllokohet');
+await expectStatus(403, '/api/products', {
+  method: 'POST',
+  token: companyAdminToken,
+  body: {
+    companyId: secondCompany.id,
+    categoryId: null,
+    code: `FORBIDDEN-${stamp}`,
+    barcode: '',
+    name: 'Artikull i Palejuar',
+    baseUnit: 'kg',
+    packUnit: 'thes',
+    palletUnit: 'paletë',
+    packCoefficient: 1,
+    palletCoefficient: 1,
+    purchasePrice: 1,
+    salePrice: 1,
+    vatRate: 0,
+    active: true,
+  },
+}, 'Krijimi në kompaninë B duhet të bllokohet');
+await expectStatus(403, '/api/users', {
+  method: 'POST',
+  token: companyAdminToken,
+  body: {
+    fullName: 'Administrator i Palejuar',
+    username: `forbidden_admin_${stamp}`,
+    email: '',
+    password: 'ForbiddenAdmin123!',
+    role: 'COMPANY_ADMIN',
+    companyIds: [companyId],
+    warehouseIds: [warehouseId],
+  },
+}, 'Administratori i kompanisë nuk duhet të krijojë administrator tjetër');
+await expectStatus(403, '/api/products', {
+  method: 'POST',
+  token: auditorToken,
+  body: {
+    companyId,
+    categoryId: null,
+    code: `AUDIT-WRITE-${stamp}`,
+    barcode: '',
+    name: 'Shkrim i Palejuar nga Audituesi',
+    baseUnit: 'kg',
+    packUnit: 'thes',
+    palletUnit: 'paletë',
+    packCoefficient: 1,
+    palletCoefficient: 1,
+    purchasePrice: 1,
+    salePrice: 1,
+    vatRate: 0,
+    active: true,
+  },
+}, 'Roli Auditues nuk duhet të krijojë artikuj');
 
 const product = await api('/api/products', {
   method: 'POST',
@@ -335,4 +565,6 @@ console.log(JSON.stringify({
   stockAfterCancellation: 0,
   protectedPostedPayment: true,
   idempotentConversion: true,
+  multiCompanyIsolationVerified: true,
+  rolePermissionsVerified: true,
 }, null, 2));
