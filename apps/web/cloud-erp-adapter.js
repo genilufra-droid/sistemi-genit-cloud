@@ -532,18 +532,31 @@
     }
     var ledger = this.data[isCustomer ? 'customerLedger' : 'supplierLedger'] || [];
     var partnerKey = isCustomer ? 'customerId' : 'supplierId';
-    var charge = ledger.find(function (entry) {
+    var openCharges = ledger.filter(function (entry) {
       return entry[partnerKey] === partnerId && entry.entryType === 'CHARGE' &&
-        entry.status !== 'PAID' && entry.status !== 'REVERSED' && entry.cloud === true;
+        entry.status !== 'PAID' && entry.status !== 'REVERSED' && entry.cloud === true &&
+        num(entry.balance) > 0.005;
+    }).sort(function (a,b) {
+      return String(a.date || '').localeCompare(String(b.date || ''));
     });
-    if (!charge) {
+    if (!openCharges.length) {
       this.toast('Nuk ka detyrim të hapur.', 'error');
       return;
     }
-    if (amount > num(charge.balance) + 0.005) {
-      this.toast('Pagesa tejkalon shumën e mbetur: ' + num(charge.balance).toLocaleString('sq-AL'), 'error');
+    var openTotal = openCharges.reduce(function (sum,entry) { return sum + num(entry.balance); },0);
+    if (amount > openTotal + 0.005) {
+      this.toast('Pagesa tejkalon shumën totale të mbetur: ' + openTotal.toLocaleString('sq-AL'), 'error');
       return;
     }
+    var remainingToAllocate = amount;
+    var allocations = [];
+    openCharges.forEach(function (entry) {
+      if (remainingToAllocate <= 0.005) return;
+      var allocated = Math.min(num(entry.balance),remainingToAllocate);
+      allocations.push({businessDocumentId:entry.invoiceId,amount:allocated});
+      remainingToAllocate -= allocated;
+    });
+    var charge = openCharges[0];
     try {
       if (submit) submit.disabled = true;
       var accountKind = method === 'cash' ? 'CASH' : 'BANK';
@@ -574,7 +587,7 @@
           description: (isCustomer ? 'Arkëtim nga klienti ' : 'Pagesë furnitori ') +
             (partner.name || '') + ' për faturën ' + (charge.docNumber || ''),
           referenceNo: charge.docNumber || '',
-          allocations: [{ businessDocumentId: charge.invoiceId, amount: amount }]
+          allocations: allocations
         }
       });
       await request('/api/finance/documents/' + encodeURIComponent(financeDocument.id) + '/post', {
