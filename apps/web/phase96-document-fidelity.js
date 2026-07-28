@@ -177,7 +177,11 @@
    * authentication bootstrap to crash.  Waiting for load keeps every export
    * engine available before switching to the clean document view.
    */
-  if(fidelityMode)global.addEventListener('load',function(){boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});},{once:true});
+  function startFidelityDocument(){boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});}
+  if(fidelityMode){
+    if(document.readyState==='complete')startFidelityDocument();
+    else global.addEventListener('load',startFidelityDocument,{once:true});
+  }
   global.SGPhase96={openDocument:openDocument,url:fidelityUrl,excel:excel,pdf:pdf};
 })(window);
 /* SG_PHASE96_DOCUMENT_FIDELITY_END */
