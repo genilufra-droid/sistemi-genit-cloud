@@ -123,6 +123,15 @@
       if(typeof App[method]!=='function')return;
       App[method]=function(id){if(id){openDocument(id,'business_document');return;}};
     });
+    global.addEventListener('click',function(event){
+      if(fidelityMode)return;
+      var row=event.target&&event.target.closest&&event.target.closest('tr[onclick]');
+      if(!row)return;
+      var source=row.getAttribute('onclick')||'';
+      var match=source.match(/App\.(?:openPurchaseInvoice|openSalesInvoice|openPurchaseReceipt|openDeliveryNote|openPurchaseOrder|openSalesOrder|openPurchaseRFQ|openSalesQuotation)\(['"]([^'"]+)['"]\)/);
+      if(!match)return;
+      event.preventDefault();event.stopImmediatePropagation();openDocument(match[1],'business_document');
+    },true);
   }
   install();
   if(fidelityMode)boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});
