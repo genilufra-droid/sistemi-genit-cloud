@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { PHASE76_REPORTS, installPhase76InventoryReportsRoutes, migratePhase76InventoryReports } from './phase76-inventory-reports.js';
+import { installElectronicArchiveRoutes, migrateElectronicArchive } from './phase84-electronic-archive.js';
 
 const originalCreateServer=http.createServer;
 let capturedApp=null;
@@ -34,7 +35,9 @@ const router=capturedApp.router||capturedApp._router;
 if(!router?.stack||router.stack.length<2)throw new Error('Express route stack nuk u gjet për Phase 7.6.');
 const terminalLayers=router.stack.splice(-2);
 await migratePhase76InventoryReports(pool);
+await migrateElectronicArchive(pool);
 installPhase76InventoryReportsRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,accessibleCompanyIds,audit});
+installElectronicArchiveRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,audit});
 router.stack.push(...terminalLayers);
 
 const modulesLayer=router.stack.find((layer)=>layer.route?.path==='/api/modules');
@@ -46,4 +49,4 @@ if(modulesLayer?.route?.stack?.length){
   };
 }
 
-console.log('Sistemi Genit Cloud Phase 7.6: Fletë-Hyrje/Fletë-Dalje dhe 20 raporte Inventory installed.');
+console.log('Sistemi Genit Cloud Phase 8.4: Inventory dhe Arkiva Elektronike cloud installed.');
