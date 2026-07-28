@@ -3,86 +3,66 @@
 const MARK='SG_PHASE84_ELECTRONIC_ARCHIVE_START';
 if(window.__sgPhase84Installed)return;window.__sgPhase84Installed=true;console.info(MARK);
 const MAX_FILE_SIZE=25*1024*1024;
+const App=window.App;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const stable=v=>String(v||'').trim().replace(/\s+/g,' ').slice(0,800);
-const companyId=()=>window.App?.company?.id||'';
+const companyId=()=>App?.company?.id||'';
 const api=()=>window.CloudERP;
-const titleFor=view=>stable(view.querySelector('.sg82-view-head strong')?.textContent||view.querySelector('h2')?.textContent||'Dokument');
-const numberFor=view=>{
-  const explicit=view.getAttribute('data-document-no')||view.querySelector('[data-document-no]')?.getAttribute('data-document-no');
-  if(explicit)return stable(explicit);
-  const text=stable(view.textContent);
-  return text.match(/\b(?:FH|FD|FB|FS|PB|PS|MA|MP|OF)[-_][A-Z0-9-]+\b/i)?.[0]||'';
-};
-const keyFor=view=>{
-  const explicit=view.dataset.documentKey||view.getAttribute('data-document-id')||view.querySelector('[data-document-id]')?.getAttribute('data-document-id');
-  if(explicit)return 'document:'+stable(explicit);
-  const number=numberFor(view);
-  return number?'document-no:'+number:'view:'+titleFor(view)+'|'+[...view.querySelectorAll('.sg82-kv>div')].map(x=>stable(x.textContent)).filter(Boolean).join('|');
-};
+const state={folderId:null,folders:[],files:[],query:'',busy:false};
 function requireCloud(){if(!api()?.request)throw new Error('Arkiva kërkon lidhjen cloud. Rifresko faqen dhe hyr përsëri.');if(!companyId())throw new Error('Zgjidh kompaninë aktive.');}
-async function list(documentKey,query=''){requireCloud();return api().request('/api/archive/files?companyId='+encodeURIComponent(companyId())+(documentKey?'&documentKey='+encodeURIComponent(documentKey):'')+(query?'&query='+encodeURIComponent(query):''));}
+const request=(path,options)=>{requireCloud();return api().request(path,options);};
+const listFolders=()=>request('/api/archive/folders?companyId='+encodeURIComponent(companyId()));
+const listFiles=(documentKey='',query='',folderId='')=>request('/api/archive/files?companyId='+encodeURIComponent(companyId())+(documentKey?'&documentKey='+encodeURIComponent(documentKey):'')+(folderId?'&folderId='+encodeURIComponent(folderId):'')+(query?'&query='+encodeURIComponent(query):''));
+const createFolder=(name,parentId=null,description='')=>request('/api/archive/folders',{method:'POST',body:{companyId:companyId(),parentId,name,description}});
+const renameFolder=(id,name)=>request('/api/archive/folders/'+encodeURIComponent(id),{method:'PATCH',body:{name}});
+const deleteFolder=id=>request('/api/archive/folders/'+encodeURIComponent(id),{method:'DELETE'});
+const updateFile=(id,body)=>request('/api/archive/files/'+encodeURIComponent(id),{method:'PATCH',body});
+const removeFile=id=>request('/api/archive/files/'+encodeURIComponent(id),{method:'DELETE'});
 function dataUrl(file){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result||'').split(',')[1]||'');r.onerror=()=>no(r.error||new Error('Skedari nuk u lexua.'));r.readAsDataURL(file);});}
-async function put(view,file){
-  requireCloud();
-  if(!file.size)throw new Error('Skedari është bosh.');
-  if(file.size>MAX_FILE_SIZE)throw new Error('Skedari kalon kufirin 25 MB.');
-  const allowed=/^(image\/|application\/pdf$|application\/zip$|application\/x-zip-compressed$)/i;
-  if(!allowed.test(file.type)&&!file.name.toLowerCase().endsWith('.zip'))throw new Error('Lejohen vetëm foto, PDF dhe ZIP.');
-  return api().request('/api/archive/files',{method:'POST',timeout:120000,body:{
-    companyId:companyId(),documentKey:keyFor(view),documentTitle:titleFor(view),documentNo:numberFor(view),
-    filename:file.name,mimeType:file.type||'application/octet-stream',contentBase64:await dataUrl(file),notes:''
-  }});
-}
-async function remove(id){requireCloud();return api().request('/api/archive/files/'+encodeURIComponent(id),{method:'DELETE'});}
+function validateFile(file){if(!file.size)throw new Error('Skedari është bosh.');if(file.size>MAX_FILE_SIZE)throw new Error('Skedari kalon kufirin 25 MB.');if(!/^(image\/|application\/pdf$|application\/zip$|application\/x-zip-compressed$)/i.test(file.type)&&!file.name.toLowerCase().endsWith('.zip'))throw new Error('Lejohen vetëm foto, PDF dhe ZIP.');}
+async function uploadFile(file,meta={}){validateFile(file);return request('/api/archive/files',{method:'POST',timeout:120000,body:{
+  companyId:companyId(),folderId:meta.folderId||null,documentKey:meta.documentKey||('archive-folder:'+(meta.folderId||'root')),
+  documentTitle:meta.documentTitle||'Arkiva Elektronike',documentNo:meta.documentNo||'',
+  filename:file.name,mimeType:file.type||'application/octet-stream',contentBase64:await dataUrl(file),notes:meta.notes||''
+}});}
 function token(){try{return localStorage.getItem('sg_cloud_access_token_v1')||'';}catch{return'';}}
-async function openFile(row){
-  requireCloud();
-  const response=await fetch(api().apiUrl+'/api/archive/files/'+encodeURIComponent(row.id)+'/content',{headers:{Authorization:'Bearer '+token()}});
-  if(!response.ok){let message='Skedari nuk u hap.';try{message=(await response.json()).message||message;}catch{}throw new Error(message);}
-  const blob=await response.blob(),url=URL.createObjectURL(blob);
-  if(/^image\//i.test(row.mimeType)||row.mimeType==='application/pdf'){const win=window.open(url,'_blank','noopener');if(win){setTimeout(()=>URL.revokeObjectURL(url),120000);return;}}
-  const a=document.createElement('a');a.href=url;a.download=row.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+async function openFile(row,download=false){requireCloud();const response=await fetch(api().apiUrl+'/api/archive/files/'+encodeURIComponent(row.id)+'/content',{headers:{Authorization:'Bearer '+token()}});if(!response.ok){let message='Skedari nuk u hap.';try{message=(await response.json()).message||message;}catch{}throw new Error(message);}const blob=await response.blob(),url=URL.createObjectURL(blob);if(!download&&(/^image\//i.test(row.mimeType)||row.mimeType==='application/pdf')){const win=window.open(url,'_blank','noopener');if(win){setTimeout(()=>URL.revokeObjectURL(url),120000);return;}}const a=document.createElement('a');a.href=url;a.download=row.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+function human(n){n=Number(n||0);if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB';}
+function icon(row){if(row.mimeType==='application/pdf')return'📕';if(/zip/i.test(row.mimeType)||/\.zip$/i.test(row.filename))return'🗜️';if(/^image\//i.test(row.mimeType))return'🖼️';return'📄';}
+function styles(){if(document.getElementById('sg84-style'))return;const s=document.createElement('style');s.id='sg84-style';s.textContent=`
+.sg84-page{padding:18px;max-width:1300px;margin:auto}.sg84-toolbar,.sg84-head,.sg84-file,.sg84-folder{display:flex;align-items:center;gap:10px}.sg84-toolbar,.sg84-head{justify-content:space-between;flex-wrap:wrap}.sg84-card{background:#fff;border:1px solid #dfe3e8;border-radius:10px;padding:16px;margin-top:14px}.sg84-tools{display:flex;gap:8px;flex-wrap:wrap}.sg84-btn{border:1px solid #cfd5dc;background:#fff;border-radius:7px;padding:9px 12px;cursor:pointer;color:#303744}.sg84-btn.primary{background:#714b67;border-color:#714b67;color:#fff}.sg84-btn.danger{color:#b42318;border-color:#f3b5b0}.sg84-search{min-width:260px;flex:1;border:1px solid #cfd5dc;border-radius:7px;padding:10px}.sg84-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px}.sg84-folders{display:grid;gap:6px;align-content:start}.sg84-folder{padding:10px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer}.sg84-folder.active{background:#f1eaf0;border-color:#714b67}.sg84-folder span:nth-child(2){flex:1;overflow-wrap:anywhere}.sg84-list{display:grid;gap:8px}.sg84-file{justify-content:space-between;border:1px solid #e2e8f0;border-radius:9px;padding:10px}.sg84-file-main{display:flex;gap:10px;min-width:0;align-items:center}.sg84-file-main>span{font-size:25px}.sg84-file strong{display:block;overflow-wrap:anywhere}.sg84-file small{display:block;color:#64748b}.sg84-actions{display:flex;gap:5px;flex-wrap:wrap}.sg84-empty,.sg84-error{padding:16px;border:1px dashed #cbd5e1;border-radius:9px;color:#64748b}.sg84-error{border-color:#fecaca;color:#b91c1c}.sg84-busy{opacity:.55;pointer-events:none}.sg84-archive{border-top:1px solid #e2e8f0;margin-top:18px;padding-top:14px}.sg84-badge{display:inline-flex;border-radius:999px;background:#0f172a;color:#fff;font-size:11px;padding:2px 7px}.sg84-modal{position:fixed;inset:0;z-index:100100;background:#0008;display:grid;place-items:center;padding:14px}.sg84-modal-card{background:#fff;border-radius:12px;width:min(920px,100%);max-height:92vh;overflow:auto;padding:16px}
+@media(max-width:760px){.sg84-page{padding:10px}.sg84-layout{grid-template-columns:1fr}.sg84-search{min-width:0;width:100%}.sg84-file{align-items:flex-start;display:grid}.sg84-actions .sg84-btn{flex:1}.sg84-modal{padding:5px}}`;document.head.appendChild(s);}
+function folderName(id){return state.folders.find(x=>x.id===id)?.name||'Pa dosje';}
+function folderRows(){return '<button class="sg84-folder'+(!state.folderId?' active':'')+'" data-folder=""><span>🗄️</span><span>Të gjithë skedarët</span></button>'+state.folders.map(f=>'<button class="sg84-folder'+(state.folderId===f.id?' active':'')+'" data-folder="'+esc(f.id)+'"><span>📁</span><span>'+esc(f.name)+'</span><small>'+f.fileCount+'</small></button>').join('');}
+function fileRows(){if(!state.files.length)return'<div class="sg84-empty">Nuk ka skedarë në këtë dosje.</div>';return state.files.map(r=>'<article class="sg84-file" data-file="'+esc(r.id)+'"><div class="sg84-file-main"><span>'+icon(r)+'</span><div><strong>'+esc(r.filename)+'</strong><small>'+esc(folderName(r.folderId))+' · '+esc(human(r.fileSize))+' · '+esc(new Date(r.createdAt).toLocaleString('sq-AL'))+'</small>'+(r.documentNo||r.documentTitle?'<small>Burimi: '+esc(r.documentNo||r.documentTitle)+'</small>':'')+'</div></div><div class="sg84-actions"><button class="sg84-btn" data-open>Hap</button><button class="sg84-btn" data-download>Shkarko</button><button class="sg84-btn" data-move>Zhvendos</button><button class="sg84-btn danger" data-delete>Fshi</button></div></article>').join('');}
+async function refreshModule(){const root=document.getElementById('sg84-module');if(!root)return;root.classList.add('sg84-busy');try{state.folders=await listFolders();state.files=await listFiles('',state.query,state.folderId||'');root.querySelector('.sg84-folders').innerHTML=folderRows();root.querySelector('.sg84-list').innerHTML=fileRows();root.querySelector('[data-count]').textContent=state.files.length+' skedarë';}catch(e){root.querySelector('.sg84-list').innerHTML='<div class="sg84-error">'+esc(e.message||e)+'</div>';}finally{root.classList.remove('sg84-busy');}}
+function moduleHtml(){return'<main id="sg84-module" class="sg84-page"><div class="sg84-head"><div><h2 style="margin:0">🗄️ Arkiva Elektronike</h2><small>Dosje dhe skedarë të kompanisë aktive, të aksesueshëm nga çdo pajisje.</small></div><strong data-count>0 skedarë</strong></div><section class="sg84-card"><div class="sg84-toolbar"><input class="sg84-search" type="search" placeholder="Kërko në Arkivë: skedar, dokument ose shënim..." autocomplete="off"><div class="sg84-tools"><button class="sg84-btn" data-new-folder>+ Dosje e Re</button><button class="sg84-btn primary" data-upload>+ Ngarko PDF / Foto / ZIP</button><input type="file" hidden multiple accept="image/*,.pdf,.zip,application/pdf,application/zip"></div></div></section><div class="sg84-layout"><aside class="sg84-card sg84-folders"></aside><section class="sg84-card sg84-list"><div class="sg84-empty">Duke ngarkuar…</div></section></div></main>';}
+function currentContent(){return document.querySelector('#content,.content,.main-content');}
+async function viewArchive(){requireCloud();styles();const content=currentContent();if(!content)throw new Error('Pamja kryesore nuk u gjet.');content.innerHTML=moduleHtml();const root=document.getElementById('sg84-module'),input=root.querySelector('input[type=file]'),search=root.querySelector('.sg84-search');
+  root.onclick=async e=>{try{
+    const folder=e.target.closest('[data-folder]');if(folder){state.folderId=folder.dataset.folder||null;await refreshModule();return;}
+    if(e.target.closest('[data-new-folder]')){const name=prompt('Emri i dosjes së re:');if(name){await createFolder(name,state.folderId);await refreshModule();}return;}
+    if(e.target.closest('[data-upload]')){input.click();return;}
+    const fileEl=e.target.closest('[data-file]');if(!fileEl)return;const row=state.files.find(x=>x.id===fileEl.dataset.file);if(!row)return;
+    if(e.target.closest('[data-open]'))await openFile(row,false);
+    if(e.target.closest('[data-download]'))await openFile(row,true);
+    if(e.target.closest('[data-move]')){const choices=['0 — Pa dosje'].concat(state.folders.map((f,i)=>(i+1)+' — '+f.name));const answer=prompt('Zgjidh numrin e dosjes:\\n'+choices.join('\\n'),'0');if(answer!==null){const index=Number(answer);if(!Number.isInteger(index)||index<0||index>state.folders.length)throw new Error('Zgjedhje e pavlefshme.');await updateFile(row.id,{folderId:index?state.folders[index-1].id:null});await refreshModule();}}
+    if(e.target.closest('[data-delete]')&&confirm('Ta fshij përgjithmonë skedarin “'+row.filename+'”?')){await removeFile(row.id);await refreshModule();}
+  }catch(err){alert(err.message||err);}};
+  input.onchange=async()=>{root.classList.add('sg84-busy');try{for(const f of [...input.files])await uploadFile(f,{folderId:state.folderId});}catch(e){alert(e.message||e);}finally{input.value='';root.classList.remove('sg84-busy');await refreshModule();}};
+  let timer;search.oninput=()=>{clearTimeout(timer);timer=setTimeout(async()=>{state.query=search.value.trim();await refreshModule();},250);};await refreshModule();}
+function titleFor(view){return stable(view.querySelector('.sg82-view-head strong')?.textContent||view.querySelector('h2')?.textContent||'Dokument');}
+function numberFor(view){const explicit=view.getAttribute('data-document-no')||view.querySelector('[data-document-no]')?.getAttribute('data-document-no');if(explicit)return stable(explicit);return stable(view.textContent).match(/\b(?:FH|FD|FB|FS|PB|PS|MA|MP|OF)[-_][A-Z0-9-]+\b/i)?.[0]||'';}
+function keyFor(view){const explicit=view.dataset.documentKey||view.getAttribute('data-document-id')||view.querySelector('[data-document-id]')?.getAttribute('data-document-id');if(explicit)return'document:'+stable(explicit);const n=numberFor(view);return n?'document-no:'+n:'view:'+titleFor(view);}
+function attachmentRow(row){return'<div class="sg84-file" data-file="'+esc(row.id)+'"><div class="sg84-file-main"><span>'+icon(row)+'</span><div><strong>'+esc(row.filename)+'</strong><small>'+human(row.fileSize)+' · '+esc(new Date(row.createdAt).toLocaleString('sq-AL'))+'</small></div></div><div class="sg84-actions"><button class="sg84-btn" data-open>Hap</button><button class="sg84-btn" data-download>Shkarko</button><button class="sg84-btn danger" data-delete>Fshi</button></div></div>';}
+async function mount(view){if(!view||view.dataset.sg84==='1')return;const body=view.querySelector('.sg82-view-body');if(!body)return;view.dataset.sg84='1';const key=keyFor(view),box=document.createElement('section');box.className='sg84-archive';box.innerHTML='<div class="sg84-head"><div><strong>Arkiva Elektronike</strong> <span class="sg84-badge">0</span><small style="display:block;color:#64748b">Bashkëngjitjet ruhen në cloud dhe lidhen me këtë dokument.</small></div><div class="sg84-tools"><button class="sg84-btn" data-full>Hap Arkivën</button><button class="sg84-btn primary" data-add>Bashkëngjit Skedar</button><input type="file" hidden multiple accept="image/*,.pdf,.zip"></div></div><div class="sg84-list"></div>';body.appendChild(box);const input=box.querySelector('input'),out=box.querySelector('.sg84-list'),badge=box.querySelector('.sg84-badge');let rows=[];
+  const render=async()=>{try{rows=await listFiles(key);badge.textContent=rows.length;out.innerHTML=rows.length?rows.map(attachmentRow).join(''):'<div class="sg84-empty">Nuk ka skedarë të bashkëngjitur.</div>';}catch(e){out.innerHTML='<div class="sg84-error">'+esc(e.message||e)+'</div>';}};
+  box.onclick=async e=>{try{if(e.target.closest('[data-full]')){App.navigate('electronicArchive');return;}if(e.target.closest('[data-add]')){input.click();return;}const el=e.target.closest('[data-file]');if(!el)return;const row=rows.find(x=>x.id===el.dataset.file);if(e.target.closest('[data-open]'))await openFile(row,false);if(e.target.closest('[data-download]'))await openFile(row,true);if(e.target.closest('[data-delete]')&&confirm('Ta fshij këtë bashkëngjitje?')){await removeFile(row.id);await render();}}catch(err){alert(err.message||err);}};
+  input.onchange=async()=>{box.classList.add('sg84-busy');try{for(const f of [...input.files])await uploadFile(f,{documentKey:key,documentTitle:titleFor(view),documentNo:numberFor(view)});}catch(e){alert(e.message||e);}finally{input.value='';box.classList.remove('sg84-busy');await render();}};await render();}
+function registerNavigation(){App.view_electronicArchive=viewArchive;
+  if(App.sgNavigationRegistry&&!App.sgNavigationRegistry.hasRoute('electronicArchive')){const section={id:'sg84-archive-nav',title:'ARKIVA ELEKTRONIKE',dataKey:'sg84View',items:[{view:'electronicArchive',icon:'🗄️',label:'Arkiva Elektronike',title:'Arkiva Elektronike',handler:'view_electronicArchive'}]};App.sgNavigationRegistry.sections.push(section);App.sgNavigationRegistry.ensureMenus();}
+  if(App.SGPhase73){const s=App.SGPhase73.state;if(!s.routeMap.electronicArchive){const route={view:'electronicArchive',label:'Arkiva Elektronike',title:'Arkiva Elektronike',icon:'🗄️',handler:'view_electronicArchive',module:'archive',section:'ARKIVA ELEKTRONIKE'};s.routes.push(route);s.routeMap.electronicArchive=route;}App.SGPhase73.start&&App.SGPhase73.collectRoutes();}
 }
-function human(n){if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB';}
-function styles(){
-  if(document.getElementById('sg84-style'))return;
-  const s=document.createElement('style');s.id='sg84-style';
-  s.textContent='.sg84-archive{border-top:1px solid #e2e8f0;margin-top:18px;padding-top:14px}.sg84-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.sg84-head-actions,.sg84-file-actions{display:flex;gap:6px;flex-wrap:wrap}.sg84-list{display:grid;gap:8px;margin-top:10px}.sg84-file{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:9px;padding:9px}.sg84-file strong{overflow-wrap:anywhere}.sg84-file small{display:block;color:#64748b}.sg84-empty,.sg84-error{padding:12px;border:1px dashed #cbd5e1;border-radius:9px;color:#64748b}.sg84-error{border-color:#fecaca;color:#b91c1c}.sg84-badge{display:inline-flex;min-width:20px;height:20px;align-items:center;justify-content:center;border-radius:999px;background:#0f172a;color:#fff;font-size:11px;padding:0 6px}.sg84-busy{opacity:.55;pointer-events:none}.sg84-modal{position:fixed;inset:0;z-index:100100;background:#0008;display:grid;place-items:center;padding:14px}.sg84-modal-card{background:#fff;border-radius:12px;width:min(900px,100%);max-height:90vh;overflow:auto;padding:16px}.sg84-modal-tools{display:flex;gap:8px;margin:12px 0}.sg84-modal-tools input{flex:1;min-width:0;padding:10px;border:1px solid #cbd5e1;border-radius:8px}@media(max-width:640px){.sg84-head,.sg84-file{grid-template-columns:1fr;display:grid}.sg84-head-actions>*{flex:1}.sg84-modal{padding:6px}.sg84-modal-card{max-height:96vh}}';
-  document.head.appendChild(s);
-}
-function rowHtml(row,globalView=false){
-  const context=globalView?'<small><b>'+esc(row.documentNo||row.documentTitle||row.documentKey)+'</b></small>':'';
-  return '<div class="sg84-file" data-id="'+esc(row.id)+'"><div>'+context+'<strong>'+esc(row.filename)+'</strong><small>'+esc(human(row.fileSize))+' · '+esc(new Date(row.createdAt).toLocaleString('sq-AL'))+(row.createdByName?' · '+esc(row.createdByName):'')+'</small></div><div class="sg84-file-actions"><button type="button" class="sg82-action" data-open>Hap</button><button type="button" class="sg82-action" data-download>Shkarko</button><button type="button" class="sg82-action sg82-action-danger" data-delete>Fshi</button></div></div>';
-}
-async function openCompanyArchive(){
-  requireCloud();
-  const modal=document.createElement('div');modal.className='sg84-modal';
-  modal.innerHTML='<section class="sg84-modal-card"><div class="sg84-head"><div><strong>Arkiva Elektronike e Kompanisë</strong><small style="display:block;color:#64748b">Kërko sipas dokumentit, emrit të skedarit ose shënimit.</small></div><button type="button" class="sg82-action" data-close>Mbyll</button></div><div class="sg84-modal-tools"><input type="search" placeholder="Kërko në arkivë..." autocomplete="off"><button type="button" class="sg82-action" data-search>Kërko</button></div><div class="sg84-list"><div class="sg84-empty">Duke ngarkuar…</div></div></section>';
-  document.body.appendChild(modal);
-  const out=modal.querySelector('.sg84-list'),input=modal.querySelector('input');
-  const render=async()=>{try{const rows=await list('',input.value.trim());out.innerHTML=rows.length?rows.map(r=>rowHtml(r,true)).join(''):'<div class="sg84-empty">Nuk u gjet asnjë skedar.</div>';}catch(e){out.innerHTML='<div class="sg84-error">'+esc(e.message||e)+'</div>';}};
-  modal.onclick=async e=>{
-    if(e.target===modal||e.target.closest('[data-close]')){modal.remove();return;}
-    if(e.target.closest('[data-search]')){await render();return;}
-    const el=e.target.closest('.sg84-file');if(!el)return;const rows=await list('',input.value.trim()),row=rows.find(x=>x.id===el.dataset.id);if(!row)return;
-    try{if(e.target.closest('[data-open],[data-download]'))await openFile(row);if(e.target.closest('[data-delete]')&&confirm('Ta fshij këtë bashkëngjitje?')){await remove(row.id);await render();}}catch(err){alert(err.message||err);}
-  };
-  input.onkeydown=e=>{if(e.key==='Enter')render();};
-  await render();input.focus();
-}
-async function mount(view){
-  if(!view||view.dataset.sg84==='1')return;
-  const body=view.querySelector('.sg82-view-body');if(!body)return;
-  view.dataset.sg84='1';const documentKey=keyFor(view),box=document.createElement('section');box.className='sg84-archive';
-  box.innerHTML='<div class="sg84-head"><div><strong>Arkiva Elektronike</strong> <span class="sg84-badge">0</span><small style="display:block;color:#64748b">Foto, skanime, PDF dhe ZIP ruhen në cloud dhe hapen nga çdo pajisje. Maksimumi 25 MB.</small></div><div class="sg84-head-actions"><button type="button" class="sg82-action" data-sg84-global>Kërko në Arkivë</button><button type="button" class="sg82-action" data-sg84-add>Bashkëngjit Skedar</button></div></div><input type="file" hidden multiple accept="image/*,.pdf,.zip,application/pdf,application/zip"><div class="sg84-list"></div>';
-  body.appendChild(box);const input=box.querySelector('input'),badge=box.querySelector('.sg84-badge'),out=box.querySelector('.sg84-list');
-  const render=async()=>{try{const rows=await list(documentKey);badge.textContent=rows.length;out.innerHTML=rows.length?rows.map(r=>rowHtml(r)).join(''):'<div class="sg84-empty">Nuk ka skedarë të bashkëngjitur.</div>';}catch(e){out.innerHTML='<div class="sg84-error">'+esc(e.message||e)+'</div>';}};
-  box.querySelector('[data-sg84-add]').onclick=()=>input.click();box.querySelector('[data-sg84-global]').onclick=()=>openCompanyArchive().catch(e=>alert(e.message||e));
-  input.onchange=async()=>{box.classList.add('sg84-busy');try{for(const f of [...input.files])await put(view,f);}catch(e){alert(e.message||e);}finally{input.value='';box.classList.remove('sg84-busy');await render();}};
-  box.onclick=async e=>{const el=e.target.closest('.sg84-file');if(!el)return;try{const rows=await list(documentKey),row=rows.find(x=>x.id===el.dataset.id);if(!row)return;if(e.target.closest('[data-open],[data-download]'))await openFile(row);if(e.target.closest('[data-delete]')&&confirm('Ta fshij këtë bashkëngjitje?')){await remove(row.id);await render();}}catch(err){alert(err.message||err);}};
-  await render();
-}
-styles();const scan=()=>document.querySelectorAll('.sg82-view').forEach(view=>mount(view).catch(console.error));scan();new MutationObserver(scan).observe(document.documentElement,{subtree:true,childList:true});
-window.SGPhase84={list,put,remove,mount,keyFor,openCompanyArchive,MAX_FILE_SIZE,cloud:true};
+styles();registerNavigation();const scan=()=>document.querySelectorAll('.sg82-view').forEach(view=>mount(view).catch(console.error));scan();new MutationObserver(scan).observe(document.documentElement,{subtree:true,childList:true});
+window.SGPhase84={list:listFiles,listFolders,createFolder,uploadFile,remove:removeFile,mount,keyFor,openCompanyArchive:viewArchive,viewArchive,MAX_FILE_SIZE,cloud:true,folders:true};
 })();
