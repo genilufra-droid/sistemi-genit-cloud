@@ -25,6 +25,14 @@
 
   var sections = [
     {
+      id: 'sg84-archive-nav',
+      title: 'ARKIVA ELEKTRONIKE',
+      dataKey: 'sg84View',
+      items: [
+        { view: 'electronicArchive', icon: '🗄️', label: 'Arkiva Elektronike', title: 'Arkiva Elektronike', handler: 'view_electronicArchive' }
+      ]
+    },
+    {
       id: 'sg62-trace-nav',
       title: 'GJURMUESHMËRI 360°',
       dataKey: 'sg62View',
@@ -118,7 +126,7 @@
   ].forEach(function (entry) { canonicalLabels[normalizeLabel(entry[0])] = entry[1]; });
 
   function removeExistingInjectedSections(sidebar) {
-    ['sg62-trace-nav', 'sg5-nav-section', 'sg6-nav-section'].forEach(function (id) {
+    ['sg84-archive-nav', 'sg62-trace-nav', 'sg5-nav-section', 'sg6-nav-section'].forEach(function (id) {
       Array.prototype.slice.call(document.querySelectorAll('#' + id)).forEach(function (node) {
         if (node && node.parentNode) node.parentNode.removeChild(node);
       });
