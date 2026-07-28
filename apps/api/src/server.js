@@ -286,7 +286,9 @@ app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors(corsOptions));
 app.use(compression());
-app.use(express.json({ limit: '2mb' }));
+// Arkiva elektronike pranon skedarë deri 25 MB të koduar Base64.
+// Validimi i rreptë i madhësisë bëhet te endpoint-i i arkivës.
+app.use(express.json({ limit: '36mb' }));
 app.use(express.urlencoded({ extended: false }));
 
 const io = new SocketIOServer(server, { cors: corsOptions, transports: ['websocket', 'polling'] });

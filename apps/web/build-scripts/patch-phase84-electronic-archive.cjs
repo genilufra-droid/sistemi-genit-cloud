@@ -17,5 +17,5 @@ html=html.replace(close,start+'\n<script id="sg-phase84-electronic-archive">\n'+
 fs.writeFileSync(htmlPath,html);
 const check=fs.readFileSync(htmlPath,'utf8');
 if((check.match(/SG_PHASE84_ELECTRONIC_ARCHIVE_PATCH_START/g)||[]).length!==1)throw new Error('Patch-i Phase 8.4 nuk është idempotent.');
-['SG_PHASE84_ELECTRONIC_ARCHIVE_START','Arkiva elektronike','Bashkëngjit skedar','application/pdf','MAX_FILE_SIZE','25 MB','Ky skedar është bashkëngjitur më parë','data-document-id'].forEach(m=>{if(!check.includes(m))throw new Error('Mungon '+m);});
-console.log('Phase 8.4 hardened electronic archive injected.');
+['SG_PHASE84_ELECTRONIC_ARCHIVE_START','Arkiva Elektronike','Bashkëngjit Skedar','Kërko në Arkivë','/api/archive/files','application/pdf','MAX_FILE_SIZE','25 MB','data-document-id'].forEach(m=>{if(!check.includes(m))throw new Error('Mungon '+m);});
+console.log('Phase 8.4 cloud electronic archive injected.');

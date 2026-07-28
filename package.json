@@ -12,6 +12,7 @@
     "install:all": "npm install --workspace apps/api && npm install --workspace apps/web",
     "check": "npm run check --workspace apps/api && npm run build --workspace apps/web",
     "test:critical-flow": "node tests/critical-business-flow.mjs",
-    "test:ui-contract": "npm run build && node tests/ui-document-contract.mjs"
+    "test:ui-contract": "npm run build && node tests/ui-document-contract.mjs",
+    "test:electronic-archive": "node tests/electronic-archive-contract.mjs"
   }
 }

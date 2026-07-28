@@ -42,8 +42,7 @@ const PATCHES = [
   'patch-phase81-sample-search-create.cjs',
   'patch-phase82-global-search-document-actions.cjs',
   'patch-phase83-real-document-links.cjs',
-  // Phase 8.4 remains disabled because attachments are stored only in the
-  // current browser's IndexedDB and therefore are not multi-device/cloud data.
+  'patch-phase84-electronic-archive.cjs',
   'patch-phase85-professional-document-templates.cjs',
   'patch-phase86-exact-document-layouts.cjs',
   'patch-phase87-direct-real-document-tab.cjs',
@@ -76,6 +75,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE81_SAMPLE_SEARCH_CREATE_START',
   'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
   'SG_PHASE83_REAL_DOCUMENT_LINKS_START',
+  'SG_PHASE84_ELECTRONIC_ARCHIVE_START',
   'SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START',
   'SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START',
   'SG_PHASE87_DIRECT_REAL_DOCUMENT_TAB_START',
