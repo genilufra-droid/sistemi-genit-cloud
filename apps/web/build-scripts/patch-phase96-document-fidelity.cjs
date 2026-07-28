@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const root=process.cwd();
+const indexPath=path.join(root,'index.html');
+const sourcePath=path.join(root,'phase96-document-fidelity.js');
+let html=fs.readFileSync(indexPath,'utf8');
+const source=fs.readFileSync(sourcePath,'utf8');
+html=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,block=>block.includes('SG_PHASE96_DOCUMENT_FIDELITY_START')?'':block);
+html+='\n<script>\n'+source+'\n</script>\n';
+fs.writeFileSync(indexPath,html);
