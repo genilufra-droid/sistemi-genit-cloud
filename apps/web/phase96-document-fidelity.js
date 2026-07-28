@@ -67,7 +67,44 @@
   }
   function pdf() {
     if(!current)return;
-    var JS=global.jspdf&&global.jspdf.jsPDF;if(!JS)return global.print();
+    /*
+     * The cloud page is deliberately rendered after all application scripts
+     * have loaded.  PDFEngine is bundled with the app and does not depend on
+     * a CDN, unlike jsPDF.  It therefore always produces a real downloadable
+     * PDF on Railway and uses the same persisted document values as this A4
+     * view.  Keep jsPDF only as a legacy fallback for desktop installs.
+     */
+    if(global.PDFEngine&&typeof global.PDFEngine.downloadReport==='function'){
+      var reportRows=(current.items||[]).map(function(x,i){return {
+        nr:i+1,
+        pershkrimi:x.description||x.productName||'',
+        njesia:x.unit||'',
+        sasia:num(x.quantity),
+        cmimi:num(x.unitPrice),
+        vlera:num(x.lineTotal)
+      };});
+      reportRows.push({nr:'',pershkrimi:'Vlera pa TVSH',njesia:'',sasia:'',cmimi:'',vlera:num(current.totalNet)});
+      reportRows.push({nr:'',pershkrimi:'TVSH',njesia:'',sasia:'',cmimi:'',vlera:num(current.totalVat)});
+      reportRows.push({nr:'',pershkrimi:'TOTALI ALL',njesia:'',sasia:'',cmimi:'',vlera:num(current.totalAmount)});
+      global.PDFEngine.downloadReport({
+        company:{name:current.companyName||'Sistemi Genit',nipt:current.companyNipt||'',address:current.companyAddress||''},
+        title:typeLabel(current.docType)+' '+(current.documentNo||''),
+        filtersText:'Data: '+date(current.documentDate)+' | Partneri: '+(current.partnerName||'—')+' | Statusi: '+(current.status||'—'),
+        columns:[
+          {key:'nr',label:'Nr.',width:35,align:'center'},
+          {key:'pershkrimi',label:'Përshkrimi',width:220},
+          {key:'njesia',label:'Njësia',width:65},
+          {key:'sasia',label:'Sasia',width:70,type:'number'},
+          {key:'cmimi',label:'Çmimi',width:85,type:'currency'},
+          {key:'vlera',label:'Vlera totale',width:105,type:'currency'}
+        ],
+        rows:reportRows,
+        filename:safe(typeLabel(current.docType)+'_'+current.documentNo)+'.pdf',
+        footer:'Dokument i gjeneruar nga Sistemi Genit Cloud'
+      });
+      return;
+    }
+    var JS=global.jspdf&&global.jspdf.jsPDF;if(!JS){global.print();return;}
     var doc=new JS({orientation:'portrait',unit:'mm',format:'a4'}),title=typeLabel(current.docType),rows=(current.items||[]).map(function(x,i){return[i+1,x.description||'',x.unit||'',qty(x.quantity),money(x.unitPrice),money(x.lineTotal)];});
     doc.setFontSize(16);doc.text(title,105,15,{align:'center'});doc.setFontSize(9);doc.text('Nr. '+(current.documentNo||'')+'   Data '+date(current.documentDate)+'   Statusi '+(current.status||''),14,23);doc.text((current.companyName||'Sistemi Genit')+' / '+(current.partnerName||'—'),14,29);
     if(typeof doc.autoTable==='function')doc.autoTable({startY:35,head:[['Nr.','Përshkrimi','Njësia','Sasia','Çmimi','Vlera']],body:rows,styles:{fontSize:8},headStyles:{fillColor:[113,75,103]}});
@@ -134,7 +171,13 @@
     },true);
   }
   install();
-  if(fidelityMode)boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});
+  /*
+   * Do not replace body while the single-page app is still parsing its own
+   * scripts.  That used to remove the bundled XLSX/PDF engines and caused the
+   * authentication bootstrap to crash.  Waiting for load keeps every export
+   * engine available before switching to the clean document view.
+   */
+  if(fidelityMode)global.addEventListener('load',function(){boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});},{once:true});
   global.SGPhase96={openDocument:openDocument,url:fidelityUrl,excel:excel,pdf:pdf};
 })(window);
 /* SG_PHASE96_DOCUMENT_FIDELITY_END */
