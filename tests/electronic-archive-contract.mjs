@@ -38,13 +38,15 @@ const build = fs.readFileSync(new URL('../apps/web/build-self-contained.cjs', im
 
 for (const marker of [
   'electronic_archive_files', 'tenant_id', 'company_id', 'checksum_sha256',
+  'electronic_archive_folders', '/api/archive/folders', 'ARCHIVE_FOLDER_CREATE',
   'assertCompanyAccess', 'ARCHIVE_FILE_UPLOAD', 'ARCHIVE_FILE_DELETE',
   '/api/archive/files/:id/content',
 ]) assert.ok(api.includes(marker), `Mungon kontrata API: ${marker}`);
 
 for (const marker of [
   'Arkiva Elektronike', 'Bashkëngjit Skedar', 'Kërko në Arkivë',
-  '/api/archive/files', 'sg_cloud_access_token_v1', 'MAX_FILE_SIZE',
+  '/api/archive/files', '/api/archive/folders', 'sg_cloud_access_token_v1', 'MAX_FILE_SIZE',
+  'view_electronicArchive', 'Dosje e Re', 'Ngarko PDF / Foto / ZIP', 'Zhvendos',
 ]) assert.ok(ui.includes(marker), `Mungon kontrata UI: ${marker}`);
 
 assert.ok(build.includes("'patch-phase84-electronic-archive.cjs'"), 'Arkiva cloud nuk është aktive në build.');
