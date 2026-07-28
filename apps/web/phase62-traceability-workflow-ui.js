@@ -157,8 +157,8 @@
     if(!id)return buttons;
     if(!dossier)return buttons;
     if(['WEIGHED','QUALITY_PENDING','QUALITY_REJECTED'].indexOf(dossier.status)>=0)buttons+='<button class="btn btn-green" onclick="App.sg62Quality(\''+id+'\')">🧪 Kontroll Cilësie</button>';
-    if(dossier.status==='QUALITY_APPROVED')buttons+='<button class="btn btn-green" onclick="App.sg62CreatePurchaseInvoice(\''+id+'\')">🧾 Krijo Faturë Blerje</button>';
-    if(dossier.status==='PURCHASE_INVOICED')buttons+='<button class="btn btn-green" onclick="App.sg62CreateReceipt(\''+id+'\')">📥 Fletë-Hyrje + Lot + Etiketë</button>';
+    if(dossier.status==='QUALITY_APPROVED')buttons+='<button class="btn btn-green" onclick="App.sg62AskPurchaseInvoice(\''+id+'\')">🧾 Krijo Faturë Blerje</button>';
+    if(dossier.status==='PURCHASE_INVOICED')buttons+='<button class="btn btn-green" onclick="App.sg62AskReceipt(\''+id+'\')">📥 Krijo Fletë-Hyrje</button>';
     if(dossier.id)buttons+='<button class="btn btn-outline" onclick="App.openTraceDossier(\''+dossier.id+'\')">👁 Dosja</button>';
     if(dossier.rootLotId)buttons+='<button class="btn btn-outline" onclick="App.openLotLabel58(\''+dossier.rootLotId+'\')">🏷️ 58 mm</button>';
     return buttons;
@@ -219,8 +219,33 @@
     this.modal('Kontroll Cilësie në Pranim',body,'<button class="btn btn-outline" onclick="App.closeModal()">Anulo</button><button class="btn btn-primary" onclick="App.sg62SaveQuality(\''+weightId+'\')">Ruaj Kontrollin</button>');
   };
   App.sg62SaveQuality=async function(weightId){try{await Cloud.request('/api/trace/workflow/weights/'+encodeURIComponent(weightId)+'/quality',{method:'POST',body:{result:value('sg62-qc-result'),moisturePercent:value('sg62-qc-moisture')?num(value('sg62-qc-moisture')):null,impurityPercent:value('sg62-qc-impurity')?num(value('sg62-qc-impurity')):null,laboratoryReference:value('sg62-qc-lab'),notes:value('sg62-qc-notes')}});this.closeModal();this.toast('Kontrolli i cilësisë u regjistrua.');await this._viewWeightForm(weightId);}catch(error){toastError(error);}};
-  App.sg62CreatePurchaseInvoice=async function(weightId){try{if(!global.confirm('Krijo Faturën e Blerjes nga pesha neto e aprovuar?'))return;var result=await Cloud.request('/api/trace/workflow/weights/'+encodeURIComponent(weightId)+'/purchase-invoice',{method:'POST',body:{documentDate:value('wf-date')||today(),notes:'Krijuar nga dosja e gjurmueshmërisë'}});this.toast('Fatura e Blerjes u krijua: '+(result.documentNo||result.document_no));await this._viewWeightForm(weightId);}catch(error){toastError(error);}};
-  App.sg62CreateReceipt=async function(weightId){try{if(!global.confirm('Krijo Fletë-Hyrjen, lotin RAW, stokun dhe etiketën termike 58 mm?'))return;var result=await Cloud.request('/api/trace/workflow/weights/'+encodeURIComponent(weightId)+'/receipt',{method:'POST',body:{documentDate:value('wf-date')||today(),notes:'Krijuar nga dosja e gjurmueshmërisë'}});this.toast('Fletë-Hyrja dhe loti u krijuan: '+result.lot.lotNumber);await loadWorkflow();await this.openLotLabel58(result.lot.id);}catch(error){toastError(error);}};
+  var workflowBusy=false;
+  App.sg62AskPurchaseInvoice=function(weightId){
+    this.modal('Krijo Faturë Blerje','<p>Do të krijohet fatura reale nga pesha neto e aprovuar dhe detyrimi i furnitorit.</p>','<button class="btn btn-outline" onclick="App.closeModal()">Anulo</button><button id="sg62-confirm-invoice" class="btn btn-primary" onclick="App.sg62CreatePurchaseInvoice(\''+weightId+'\')">Krijo Faturën</button>');
+  };
+  App.sg62CreatePurchaseInvoice=async function(weightId){
+    if(workflowBusy)return;
+    var button=document.getElementById('sg62-confirm-invoice');
+    try{
+      workflowBusy=true;if(button){button.disabled=true;button.textContent='Duke krijuar…';}
+      var result=await Cloud.request('/api/trace/workflow/weights/'+encodeURIComponent(weightId)+'/purchase-invoice',{method:'POST',body:{documentDate:value('wf-date')||today(),notes:'Krijuar nga dosja e gjurmueshmërisë'}});
+      this.closeModal();this.toast((result.alreadyCreated?'Fatura ekziston: ':'Fatura e Blerjes u krijua: ')+(result.documentNo||result.document_no));
+      await loadWorkflow();await this._viewWeightForm(weightId);
+    }catch(error){toastError(error);}finally{workflowBusy=false;if(button){button.disabled=false;button.textContent='Krijo Faturën';}}
+  };
+  App.sg62AskReceipt=function(weightId){
+    this.modal('Krijo Fletë-Hyrje','<p>Do të krijohen në një transaksion Fletë-Hyrja, loti RAW dhe hyrja reale në stok.</p>','<button class="btn btn-outline" onclick="App.closeModal()">Anulo</button><button id="sg62-confirm-receipt" class="btn btn-primary" onclick="App.sg62CreateReceipt(\''+weightId+'\')">Krijo Fletë-Hyrjen</button>');
+  };
+  App.sg62CreateReceipt=async function(weightId){
+    if(workflowBusy)return;
+    var button=document.getElementById('sg62-confirm-receipt');
+    try{
+      workflowBusy=true;if(button){button.disabled=true;button.textContent='Duke krijuar…';}
+      var result=await Cloud.request('/api/trace/workflow/weights/'+encodeURIComponent(weightId)+'/receipt',{method:'POST',body:{documentDate:value('wf-date')||today(),notes:'Krijuar nga dosja e gjurmueshmërisë'}});
+      this.closeModal();this.toast((result.alreadyCreated?'Fletë-Hyrja ekziston: ':'Fletë-Hyrja dhe loti u krijuan: ')+result.lot.lotNumber);
+      await loadWorkflow();await this._viewWeightForm(weightId);
+    }catch(error){toastError(error);}finally{workflowBusy=false;if(button){button.disabled=false;button.textContent='Krijo Fletë-Hyrjen';}}
+  };
 
   App.view_traceDossiers=async function(){
     try{
