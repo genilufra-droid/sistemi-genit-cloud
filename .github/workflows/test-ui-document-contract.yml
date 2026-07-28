@@ -1,0 +1,44 @@
+name: Test UI and document contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'tests/ui-document-contract.mjs'
+      - 'package.json'
+      - '.github/workflows/test-ui-document-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'tests/ui-document-contract.mjs'
+      - 'package.json'
+      - '.github/workflows/test-ui-document-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate source syntax
+        run: |
+          node --check apps/web/phase92-universal-actions.js
+          node --check tests/ui-document-contract.mjs
+      - name: Build and enforce UI/document contract
+        env:
+          RAILWAY_SERVICE_NAME: genit-web
+          VITE_API_URL: https://genit-api-production.up.railway.app
+          GENIT_CLOUD_REQUIRED: 'true'
+        run: npm run test:ui-contract
