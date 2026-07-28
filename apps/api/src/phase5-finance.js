@@ -95,6 +95,52 @@ async function refreshInvoicePayment(client, businessDocumentId) {
   );
 }
 
+async function allocateDocumentToOpenInvoices(client, document) {
+  if (!document.partner_id || !['CASH_PAYMENT','BANK_PAYMENT','CASH_RECEIPT','BANK_RECEIPT'].includes(document.document_type)) {
+    return [];
+  }
+  const existing = await client.query(
+    'SELECT business_document_id FROM payment_allocations WHERE finance_document_id=$1',
+    [document.id],
+  );
+  if (existing.rows.length) return existing.rows.map((row) => row.business_document_id);
+
+  const invoiceType = document.document_type.endsWith('_PAYMENT') ? 'PURCHASE_INVOICE' : 'SALES_INVOICE';
+  const { rows: invoices } = await client.query(
+    `SELECT d.id,d.total_amount,d.remaining_amount AS open_amount
+     FROM business_documents d
+     WHERE d.tenant_id=$1 AND d.company_id=$2 AND d.partner_id=$3
+       AND d.doc_type=$4 AND d.status='CONFIRMED' AND d.remaining_amount>0
+     ORDER BY d.document_date,d.created_at
+     FOR UPDATE`,
+    [document.tenant_id,document.company_id,document.partner_id,invoiceType],
+  );
+  let remaining = num(document.amount_base);
+  const allocatedIds = [];
+  for (const invoice of invoices) {
+    if (remaining <= 0.0001) break;
+    const amount = Math.min(remaining,num(invoice.open_amount));
+    if (amount <= 0.0001) continue;
+    await client.query(
+      `INSERT INTO payment_allocations(id,tenant_id,finance_document_id,business_document_id,amount)
+       VALUES($1,$2,$3,$4,$5)
+       ON CONFLICT(finance_document_id,business_document_id) DO NOTHING`,
+      [randomUUID(),document.tenant_id,document.id,invoice.id,amount],
+    );
+    allocatedIds.push(invoice.id);
+    remaining -= amount;
+  }
+  if (!allocatedIds.length) {
+    throw requestError(invoiceType === 'PURCHASE_INVOICE'
+      ? 'Nuk u gjet faturë blerjeje e hapur për këtë furnitor.'
+      : 'Nuk u gjet faturë shitjeje e hapur për këtë klient.',409);
+  }
+  if (remaining > 0.0001) {
+    throw requestError('Pagesa tejkalon detyrimin total të hapur të partnerit.',409);
+  }
+  return allocatedIds;
+}
+
 export async function migratePhase5Finance(db) {
   await db.query(`
     ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18,4) NOT NULL DEFAULT 0;
@@ -474,6 +520,7 @@ export function installPhase5FinanceRoutes({ app, pool, authRequired, requireRol
         const balance = await computeAccountBalance(client, account.id);
         if (balance + 0.0001 < num(document.amount_base)) throw requestError(`Gjendje e pamjaftueshme në ${account.name}.`, 409);
       }
+      await allocateDocumentToOpenInvoices(client, document);
       await client.query(`UPDATE finance_documents SET status='POSTED',posted_by=$1,posted_at=NOW(),version=version+1,updated_at=NOW() WHERE id=$2`, [req.user.id, document.id]);
       const allocations = await client.query('SELECT business_document_id FROM payment_allocations WHERE finance_document_id=$1', [document.id]);
       for (const item of allocations.rows) await refreshInvoicePayment(client, item.business_document_id);
