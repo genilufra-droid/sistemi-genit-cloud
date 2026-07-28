@@ -11,6 +11,7 @@ const requiredMarkers = [
   'SG_PHASE88_DIRECT_DOCUMENT_RENDERER_START',
   'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
   'SG_PHASE92_UNIVERSAL_ACTIONS_START',
+  'SG_PHASE96_DOCUMENT_FIDELITY_START',
 ];
 for (const marker of requiredMarkers) {
   assert.ok(html.includes(marker), `Build-i final duhet të përmbajë ${marker}.`);
@@ -52,6 +53,11 @@ for (const method of requiredExportMethods) {
 assert.ok(html.includes('new jsPDF'), 'PDF duhet të gjenerohet me motorin real jsPDF.');
 assert.ok(html.includes('XLSX.utils.book_new'), 'Excel duhet të gjenerohet si workbook real XLSX.');
 assert.ok(html.includes('DesktopIO.saveWorkbook'), 'Workbook-i duhet të ruhet si skedar real.');
+assert.ok(html.includes("sgdocMode','fidelity'"), 'Dokumenti duhet të hapet në pamjen reale të unifikuar.');
+assert.ok(html.includes('linkedDocuments'), 'Pamja reale duhet të shfaqë dokumentet pasuese.');
+assert.ok(html.includes('sourceDocumentNo'), 'Pamja reale duhet të shfaqë dokumentin burim.');
+assert.ok(html.includes('Gjurmueshmëria e dokumentit — nga formulari i peshës te pagesa'), 'Gjurmueshmëria duhet të lidhë peshën, dokumentet dhe pagesën.');
+assert.ok(html.includes("doc.save(safe(title+'_'+current.documentNo)+'.pdf')"), 'PDF duhet të shkarkohet si skedar real.');
 
 const appDefinitions = new Set([
   ...[...html.matchAll(/App\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?function\b/g)].map((match) => match[1]),
