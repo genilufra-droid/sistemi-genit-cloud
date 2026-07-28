@@ -16,6 +16,7 @@
     { id:'finance', label:'Financa', icon:'💰', keywords:['finance','arke','banka','mandat','shpenzim','llogari','ditar'] },
     { id:'operations', label:'Operacione', icon:'🚚', keywords:['operacion','logjistik','shofer','itinerar','udhetim','karburant','mirembajtje','aset'] },
     { id:'reports', label:'Raporte', icon:'📊', keywords:['raport','analize','kartel','permbledhje'] },
+    { id:'archive', label:'Arkiva Elektronike', icon:'🗄️', keywords:['arkive','dosje','pdf','skanim','foto','zip','dokument'] },
     { id:'administration', label:'Administrim', icon:'⚙️', keywords:['kompani','perdorues','audit','konfigurim','kategori','rreth sistemit'] }
   ];
 
@@ -29,6 +30,7 @@
     mrpRoutes:{module:'manufacturing',label:'Rrugët e Prodhimit',icon:'🧭',handler:'view_mrpRoutes'},
     mrpLocations:{module:'manufacturing',label:'Lokacionet e Prodhimit',icon:'📍',handler:'view_mrpLocations'},
     mrpFinalLots:{module:'manufacturing',label:'Lotet Finale të Klientit',icon:'🏷️',handler:'view_mrpFinalLots'}
+    ,electronicArchive:{module:'archive',label:'Arkiva Elektronike',icon:'🗄️',handler:'view_electronicArchive'}
   };
 
   var state = { routes:[], routeMap:{}, activeModule:'dashboard', searchIndex:[], baseNavigate:App.navigate, baseModal:App.modal, lastNumeric:null };
@@ -65,6 +67,7 @@
     if (/financ|arke|bank|mandat|shpenzim|llogari|ditar/.test(text)) return 'finance';
     if (/operacion|logjistik|shofer|itinerar|udhetim|karburant|mirembajt|aset/.test(text)) return 'operations';
     if (/raport|analiz|kartel|permbledh/.test(text)) return 'reports';
+    if (/arkiv|skanim|pdf|zip/.test(text)) return 'archive';
     if (/blerj|furnitor|purchase|pranim/.test(text)) return 'purchase';
     if (/shitj|klient|sales|oferte/.test(text)) return 'sales';
     if (/magazin|stok|inventar|flete hyrje|flete dalje|transfer/.test(text)) return 'inventory';
