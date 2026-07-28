@@ -110,6 +110,13 @@
     App.sg96OpenDocument=openDocument;
     var original=App.sg72OpenDocument;
     App.sg72OpenDocument=function(kind,id){if(kind==='business_document'&&id){openDocument(id);return;}return typeof original==='function'?original.apply(this,arguments):null;};
+    [
+      'openPurchaseInvoice','openSalesInvoice','openPurchaseReceipt','openDeliveryNote',
+      'openPurchaseOrder','openSalesOrder','openPurchaseRFQ','openSalesQuotation'
+    ].forEach(function(method){
+      if(typeof App[method]!=='function')return;
+      App[method]=function(id){if(id){openDocument(id,'business_document');return;}};
+    });
   }
   install();
   if(fidelityMode)boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});
