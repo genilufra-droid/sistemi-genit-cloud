@@ -73,11 +73,17 @@ async function computeAccountBalance(client, accountId) {
   return num(rows[0]?.balance);
 }
 
-async function refreshInvoicePayment(client, businessDocumentId) {
+export async function refreshInvoicePayment(client, businessDocumentId) {
   if (!businessDocumentId) return;
   const { rows } = await client.query(
     `SELECT d.total_amount,
-       COALESCE(SUM(CASE WHEN f.status='POSTED' THEN pa.amount ELSE 0 END),0)::numeric AS paid
+       COALESCE(SUM(CASE WHEN f.status='POSTED' THEN pa.amount ELSE 0 END),0)::numeric AS paid,
+       COALESCE((
+         SELECT SUM(r.total_amount)
+         FROM business_documents r
+         WHERE r.tenant_id=d.tenant_id AND r.source_document_id=d.id
+           AND r.doc_type='SUPPLIER_RETURN' AND r.status='CONFIRMED'
+       ),0)::numeric AS supplier_credit
      FROM business_documents d
      LEFT JOIN payment_allocations pa ON pa.business_document_id=d.id
      LEFT JOIN finance_documents f ON f.id=pa.finance_document_id
@@ -87,8 +93,11 @@ async function refreshInvoicePayment(client, businessDocumentId) {
   if (!rows[0]) return;
   const total = num(rows[0].total_amount);
   const paid = Math.max(0, num(rows[0].paid));
-  const remaining = Math.max(0, total - paid);
-  const paymentStatus = paid <= 0 ? 'UNPAID' : remaining <= 0.0001 ? 'PAID' : 'PARTIAL';
+  const supplierCredit = Math.max(0, num(rows[0].supplier_credit));
+  const remaining = Math.max(0, total - paid - supplierCredit);
+  const paymentStatus = remaining <= 0.0001
+    ? (paid >= total - 0.0001 ? 'PAID' : 'CREDITED')
+    : (paid > 0 || supplierCredit > 0 ? 'PARTIAL' : 'UNPAID');
   await client.query(
     `UPDATE business_documents SET paid_amount=$1,remaining_amount=$2,payment_status=$3,updated_at=NOW() WHERE id=$4`,
     [paid, remaining, paymentStatus, businessDocumentId],
