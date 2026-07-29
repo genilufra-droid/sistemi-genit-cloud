@@ -4,9 +4,10 @@ import { z } from 'zod';
 const WRITE_ROLES = ['SUPER_ADMIN','COMPANY_ADMIN','MANAGER','FINANCIER','MAGAZINIER','OPERATOR_PESHORE','SHITES'];
 export const DOCUMENT_TYPES = [
   'PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE',
+  'SUPPLIER_RETURN',
   'SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE',
 ];
-const STOCK_TYPES = { PURCHASE_RECEIPT: 1, DELIVERY_NOTE: -1 };
+const STOCK_TYPES = { PURCHASE_RECEIPT: 1, SUPPLIER_RETURN: -1, DELIVERY_NOTE: -1 };
 
 export async function migratePhase2Documents(db) {
   await db.query(`
@@ -16,7 +17,7 @@ export async function migratePhase2Documents(db) {
       company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
       warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT,
       partner_id UUID REFERENCES business_partners(id) ON DELETE RESTRICT,
-      doc_type VARCHAR(40) NOT NULL CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE')),
+      doc_type VARCHAR(40) NOT NULL CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE')),
       document_no VARCHAR(80) NOT NULL,
       document_date DATE NOT NULL DEFAULT CURRENT_DATE,
       status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','CONFIRMED','CANCELLED')),
@@ -560,7 +561,7 @@ async function nextDocumentNo(client,tenantId,companyId,type) {
     FROM business_documents
     WHERE tenant_id=$1 AND company_id=$2 AND doc_type=$3
   `,[tenantId,companyId,type]);
-  const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'FH',PURCHASE_INVOICE:'FB',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS'}[type]||'DOK';
+  const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'FH',PURCHASE_INVOICE:'FB',SUPPLIER_RETURN:'KF',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS'}[type]||'DOK';
   return `${prefix}-${new Date().getFullYear()}-${String(rows[0].n).padStart(5,'0')}`;
 }
 
