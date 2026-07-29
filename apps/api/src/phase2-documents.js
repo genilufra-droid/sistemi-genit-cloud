@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { refreshInvoicePayment } from './phase5-finance.js';
 
 const WRITE_ROLES = ['SUPER_ADMIN','COMPANY_ADMIN','MANAGER','FINANCIER','MAGAZINIER','OPERATOR_PESHORE','SHITES'];
 export const DOCUMENT_TYPES = [
@@ -350,6 +351,11 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       const sign = STOCK_TYPES[document.doc_type];
       await applyStockMovements(client,document,items,req.user);
       await client.query("UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),cancelled_at=NULL,updated_at=NOW() WHERE id=$1",[document.id]);
+      // Supplier returns are normally confirmed through the dedicated endpoint.
+      // Keep the generic action correct as well, because document links may use it.
+      if (document.doc_type==='SUPPLIER_RETURN' && document.source_document_id) {
+        await refreshInvoicePayment(client,document.source_document_id);
+      }
       await audit({
         tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONFIRM',entityType:'business_document',
         entityId:document.id,companyId:document.company_id,metadata:{docType:document.doc_type,documentNo:document.document_no},ip:req.ip,
@@ -418,6 +424,9 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         }
       }
       await client.query("UPDATE business_documents SET status='CANCELLED',cancelled_at=NOW(),updated_at=NOW() WHERE id=$1",[document.id]);
+      if (document.doc_type==='SUPPLIER_RETURN' && document.source_document_id) {
+        await refreshInvoicePayment(client,document.source_document_id);
+      }
       await audit({
         tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CANCEL',entityType:'business_document',
         entityId:document.id,companyId:document.company_id,metadata:{docType:document.doc_type,documentNo:document.document_no,previousStatus:document.status},ip:req.ip,
