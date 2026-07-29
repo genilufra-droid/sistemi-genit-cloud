@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import { PHASE76_REPORTS, installPhase76InventoryReportsRoutes, migratePhase76InventoryReports } from './phase76-inventory-reports.js';
 import { installElectronicArchiveRoutes, migrateElectronicArchive } from './phase84-electronic-archive.js';
+import { installPhase97DocumentPdfRoutes } from './phase97-document-pdf.js';
 
 const originalCreateServer=http.createServer;
 let capturedApp=null;
@@ -38,6 +39,7 @@ await migratePhase76InventoryReports(pool);
 await migrateElectronicArchive(pool);
 installPhase76InventoryReportsRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,accessibleCompanyIds,audit});
 installElectronicArchiveRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,audit});
+installPhase97DocumentPdfRoutes({app:capturedApp,pool,authRequired,assertCompanyAccess});
 router.stack.push(...terminalLayers);
 
 const modulesLayer=router.stack.find((layer)=>layer.route?.path==='/api/modules');
