@@ -90,6 +90,18 @@
   function pdf() {
     if(!current)return;
     /*
+     * The A4 document on screen is the single authoritative print layout.
+     * Sending the same DOM through the browser print pipeline preserves the
+     * supplied invoice / goods-note / mandate form exactly; the user can
+     * choose "Save as PDF" in the native print dialog.  A generated summary
+     * report is deliberately not used here because it cannot be visually
+     * identical to the document form.
+     */
+    if(typeof global.print==='function'){
+      global.print();
+      return;
+    }
+    /*
      * The cloud page is deliberately rendered after all application scripts
      * have loaded.  PDFEngine is bundled with the app and does not depend on
      * a CDN, unlike jsPDF.  It therefore always produces a real downloadable
@@ -181,7 +193,7 @@
       current.traceNodes=(trace.nodes||[]).map(camel);bodyHtml=documentHtml(current);
     }
     styles();documentStyleRefinement();exactReferenceStyles();document.body.innerHTML='<div class="sg96-tools"><button data-back>Kthehu</button><button data-print>Print</button><button data-pdf>PDF</button><button data-excel>Excel</button></div><main class="sg96-doc">'+bodyHtml+'</main>';removeLegacyTableActions();global.setTimeout(removeLegacyTableActions,50);
-    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=function(){global.print();};document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
+    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=function(){global.print();};document.querySelector('[data-pdf]').textContent='Print / Ruaj PDF';document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
     document.body.onclick=function(e){var b=e.target.closest('[data-open-doc]');if(b)openDocument(b.dataset.openDoc,b.dataset.openKind||'business_document');};
   }
 
