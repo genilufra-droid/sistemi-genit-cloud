@@ -6,7 +6,7 @@ const amount = (value) => new Intl.NumberFormat('sq-AL', { minimumFractionDigits
 const date = (value) => value ? new Date(value).toLocaleDateString('sq-AL') : '—';
 const cleanFile = (value) => String(value || 'dokument').replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '') || 'dokument';
 const label = (type) => ({
-  PURCHASE_RFQ: 'KËRKESË PËR OFERTË', PURCHASE_ORDER: 'POROSI BLERJE', PURCHASE_RECEIPT: 'FLETË HYRJE', PURCHASE_INVOICE: 'FATURË BLERJE',
+  PURCHASE_RFQ: 'KËRKESË PËR OFERTË', PURCHASE_ORDER: 'POROSI BLERJE', PURCHASE_RECEIPT: 'FLETË HYRJE', PURCHASE_INVOICE: 'FATURË BLERJE', SUPPLIER_RETURN: 'KTHIM FURNITORI',
   SALES_QUOTE: 'OFERTË SHITJE', SALES_ORDER: 'POROSI SHITJE', DELIVERY_NOTE: 'FLETË DALJE', SALES_INVOICE: 'FATURË SHITJE',
   CASH_RECEIPT: 'MANDAT ARKËTIMI', BANK_RECEIPT: 'MANDAT ARKËTIMI', CASH_PAYMENT: 'MANDAT PAGËSE', BANK_PAYMENT: 'MANDAT PAGËSE',
 }[type] || 'DOKUMENT');
@@ -111,7 +111,7 @@ async function financeDocument(pool, user, id) {
 
 export function installPhase97DocumentPdfRoutes({ app, pool, authRequired, assertCompanyAccess }) {
   app.get('/api/documents/:id/pdf', authRequired, async (req, res, next) => {
-    try { const source = await businessDocument(pool, req.user, req.params.id); await assertCompanyAccess(req.user, source.company_id); const doc = pdfResponse(res, `${label(source.doc_type)}_${source.document_no}`); if (['PURCHASE_RECEIPT', 'DELIVERY_NOTE'].includes(source.doc_type)) movementPdf(doc, source); else invoicePdf(doc, source); doc.end(); } catch (error) { next(error); }
+    try { const source = await businessDocument(pool, req.user, req.params.id); await assertCompanyAccess(req.user, source.company_id); const doc = pdfResponse(res, `${label(source.doc_type)}_${source.document_no}`); if (['PURCHASE_RECEIPT', 'SUPPLIER_RETURN', 'DELIVERY_NOTE'].includes(source.doc_type)) movementPdf(doc, source); else invoicePdf(doc, source); doc.end(); } catch (error) { next(error); }
   });
   app.get('/api/finance/documents/:id/pdf', authRequired, async (req, res, next) => {
     try { const source = await financeDocument(pool, req.user, req.params.id); await assertCompanyAccess(req.user, source.company_id); const doc = pdfResponse(res, `${label(source.document_type)}_${source.document_no}`); financePdf(doc, source); doc.end(); } catch (error) { next(error); }
