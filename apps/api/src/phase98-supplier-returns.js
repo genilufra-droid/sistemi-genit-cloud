@@ -17,6 +17,8 @@ async function sourceInvoice(client,input,user){
   const source=await lockDocument(client,input.sourceInvoiceId,user.tenant_id);
   if(source.company_id!==input.companyId||source.doc_type!=='PURCHASE_INVOICE'||source.status!=='CONFIRMED')throw requestError('Zgjidhni një faturë blerjeje të konfirmuar të kompanisë aktive.',409);
   if(source.partner_id!==input.partnerId)throw requestError('Furnitori duhet të jetë i njëjtë me furnitorin e faturës.',409);
+  if(!source.warehouse_id)throw requestError('Fatura burim nuk ka magazinë. Kthimi duhet të bëhet nga magazina e faturës.',409);
+  if(source.warehouse_id!==input.warehouseId)throw requestError('Kthimi duhet të bëhet nga e njëjta magazinë e faturës burim.',409);
   return source;
 }
 
