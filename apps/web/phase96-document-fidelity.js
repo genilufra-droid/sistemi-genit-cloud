@@ -75,11 +75,44 @@
   function excel() {
     if(!current||!XlsxEngine)return alert('Motori Excel nuk është i disponueshëm.');
     var title=typeLabel(current.docType)+' '+current.documentNo;
-    var aoa=[[title],[current.companyName||'Sistemi Genit','NIPT: '+(current.companyNipt||'—')],['Data',date(current.documentDate)],['Statusi',current.status],['Partneri',current.partnerName||'—'],['Dokumenti burim',current.sourceDocumentNo||'—'],[],['Nr.','Përshkrimi','Njësia','Sasia','Çmimi','TVSH %','Pa TVSH','TVSH','Totali']];
-    (current.items||[]).forEach(function(x,i){aoa.push([i+1,x.description||'',x.unit||'',num(x.quantity),num(x.unitPrice),num(x.vatRate),num(x.lineNet),num(x.lineVat),num(x.lineTotal)]);});
-    aoa.push([],['','','','','','','Vlera pa TVSH',num(current.totalNet)],['','','','','','','TVSH',num(current.totalVat)],['','','','','','','TOTALI',num(current.totalAmount)]);
-    if((current.linkedDocuments||[]).length){aoa.push([],['DOKUMENTET E LIDHURA']);(current.linkedDocuments||[]).forEach(function(x){aoa.push([typeLabel(x.docType),x.documentNo,x.status]);});}
-    var ws=XlsxEngine.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:8},{wch:34},{wch:12},{wch:12},{wch:14},{wch:10},{wch:16},{wch:14},{wch:16}];ws['!freeze']={xSplit:0,ySplit:8};ws['!autofilter']={ref:'A8:I8'};
+    var isMovement=current.docType==='PURCHASE_RECEIPT'||current.docType==='DELIVERY_NOTE';
+    var isFinance=/^(CASH|BANK)_(RECEIPT|PAYMENT)$/.test(String(current.docType||''));
+    var aoa=[],headerRow=0,cols=[];
+    if(isFinance){
+      var financeTitle=/RECEIPT$/.test(String(current.docType||''))?'MANDAT ARKËTIMI':'MANDAT PAGESE';
+      function mandateCopy(){
+        aoa.push([current.companyName||'SHOQËRIA','',financeTitle,'','','Nr. Serisë',current.referenceNo||'']);
+        aoa.push(['Dega '+(current.warehouseName||''),'','Nr. '+(current.documentNo||''),'Dt. '+date(current.documentDate),'','','']);
+        aoa.push([/RECEIPT$/.test(String(current.docType||''))?'Arkëtuar nga':'Paguar te',current.partnerName||'','','','','','']);
+        aoa.push(['Shuma lekë',num(current.totalAmount),current.currency||'ALL','','','','']);
+        aoa.push(['Për',current.description||current.referenceNo||'','','','','','']);
+        aoa.push(['Financieri','','Drejtori','','',/RECEIPT$/.test(String(current.docType||''))?'Arkëtari':'Paguesi','']);
+      }
+      mandateCopy();aoa.push([]);mandateCopy();
+      cols=[{wch:22},{wch:27},{wch:18},{wch:18},{wch:10},{wch:19},{wch:15}];
+    }else if(isMovement){
+      aoa.push([current.companyName||'Sistemi Genit','','',typeLabel(current.docType),'','']);
+      aoa.push(['NIPT: '+(current.companyNipt||'—'),'','', 'Nr. '+(current.documentNo||''),'Dt. '+date(current.documentDate),'']);
+      aoa.push(['Partneri / Adresa',current.partnerName||current.partnerAddress||'','','Magazina',current.warehouseName||'','']);
+      headerRow=4;aoa.push(['Nr.','Emërtimi i mallit','Njësia','Sasia','Çmimi','Vlefta']);
+      (current.items||[]).forEach(function(x,i){aoa.push([i+1,x.description||x.productName||'',x.unit||'',num(x.quantity),num(x.unitPrice),num(x.lineTotal)]);});
+      for(var m=(current.items||[]).length;m<21;m+=1)aoa.push([m+1,'','','','','']);
+      aoa.push([],['Emri, mbiemri / Nënshkrimi','Magazinieri','Pranuesi','Transportuesi','Llogaritari','']);
+      cols=[{wch:7},{wch:42},{wch:13},{wch:13},{wch:15},{wch:17}];
+    }else{
+      aoa.push([title]);
+      aoa.push([current.companyName||'Sistemi Genit','','','','','NIPT: '+(current.companyNipt||'—')]);
+      aoa.push(['Adresa',current.companyAddress||'—','','','','','']);
+      aoa.push(['Partneri',current.partnerName||'—','','','Data',date(current.documentDate),'']);
+      aoa.push(['Adresa partneri',current.partnerAddress||'—','','','Nr. dokumenti',current.documentNo||'','']);
+      headerRow=6;aoa.push(['Nr.','Përshkrimi','Njësia','Sasia','Çmimi','TVSH %','Pa TVSH','TVSH','Totali']);
+      (current.items||[]).forEach(function(x,i){aoa.push([i+1,x.description||x.productName||'',x.unit||'',num(x.quantity),num(x.unitPrice),num(x.vatRate),num(x.lineNet),num(x.lineVat),num(x.lineTotal)]);});
+      aoa.push([],['','','','','','','Vlera pa TVSH','',num(current.totalNet)],['','','','','','','TVSH','',num(current.totalVat)],['','','','','','','TOTALI','',num(current.totalAmount)]);
+      if((current.linkedDocuments||[]).length){aoa.push([],['DOKUMENTET E LIDHURA']);(current.linkedDocuments||[]).forEach(function(x){aoa.push([typeLabel(x.docType),x.documentNo,x.status]);});}
+      cols=[{wch:7},{wch:34},{wch:12},{wch:12},{wch:14},{wch:10},{wch:16},{wch:14},{wch:16}];
+    }
+    var ws=XlsxEngine.utils.aoa_to_sheet(aoa);ws['!cols']=cols;ws['!freeze']={xSplit:0,ySplit:headerRow||1};ws['!margins']={left:0.25,right:0.25,top:0.35,bottom:0.35,header:0.15,footer:0.15};ws['!printArea']='A1:'+XlsxEngine.utils.encode_col(cols.length-1)+(aoa.length||1);
+    if(headerRow)ws['!autofilter']={ref:'A'+headerRow+':'+XlsxEngine.utils.encode_col(cols.length-1)+headerRow};
     var wb=XlsxEngine.utils.book_new();XlsxEngine.utils.book_append_sheet(wb,ws,'Dokumenti');
     var filename=safe(title)+'.xlsx';
     if(DesktopEngine&&DesktopEngine.saveBinary){
