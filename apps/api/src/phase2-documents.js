@@ -255,6 +255,12 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         throw requestError(`Konvertimi ${source.doc_type} → ${targetType} nuk lejohet.`,400);
       }
       if(source.status==='DRAFT') {
+        // A document may be converted directly from Draft in the UI.  For stock
+        // documents that confirmation must still create the physical movement;
+        // otherwise a Draft receipt/delivery converted to an invoice would be
+        // marked CONFIRMED without changing stock.
+        const sourceItems = await readItems(client,source.id);
+        await applyStockMovements(client,source,sourceItems,req.user);
         await client.query(
           "UPDATE business_documents SET status='CONFIRMED',confirmed_at=NOW(),updated_at=NOW() WHERE id=$1",
           [source.id],
