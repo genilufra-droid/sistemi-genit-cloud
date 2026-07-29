@@ -5,6 +5,7 @@ import pg from 'pg';
 import { PHASE76_REPORTS, installPhase76InventoryReportsRoutes, migratePhase76InventoryReports } from './phase76-inventory-reports.js';
 import { installElectronicArchiveRoutes, migrateElectronicArchive } from './phase84-electronic-archive.js';
 import { installPhase97DocumentPdfRoutes } from './phase97-document-pdf.js';
+import { installPhase98SupplierReturnRoutes, migratePhase98SupplierReturns } from './phase98-supplier-returns.js';
 
 const originalCreateServer=http.createServer;
 let capturedApp=null;
@@ -37,9 +38,11 @@ if(!router?.stack||router.stack.length<2)throw new Error('Express route stack nu
 const terminalLayers=router.stack.splice(-2);
 await migratePhase76InventoryReports(pool);
 await migrateElectronicArchive(pool);
+await migratePhase98SupplierReturns(pool);
 installPhase76InventoryReportsRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,accessibleCompanyIds,audit});
 installElectronicArchiveRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,audit});
 installPhase97DocumentPdfRoutes({app:capturedApp,pool,authRequired,assertCompanyAccess});
+installPhase98SupplierReturnRoutes({app:capturedApp,pool,authRequired,requireRoles,assertCompanyAccess,audit,emitTenant});
 router.stack.push(...terminalLayers);
 
 const modulesLayer=router.stack.find((layer)=>layer.route?.path==='/api/modules');
