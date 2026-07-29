@@ -130,10 +130,7 @@
      * report is deliberately not used here because it cannot be visually
      * identical to the document form.
      */
-    if(typeof global.print==='function'){
-      global.print();
-      return;
-    }
+    if(printExactDocument())return;
     /*
      * The cloud page is deliberately rendered after all application scripts
      * have loaded.  PDFEngine is bundled with the app and does not depend on
@@ -179,6 +176,22 @@
     var end=doc.lastAutoTable?doc.lastAutoTable.finalY+9:150;doc.text('Vlera pa TVSH: '+money(current.totalNet)+' ALL',130,end);doc.text('TVSH: '+money(current.totalVat)+' ALL',130,end+6);doc.setFontSize(11);doc.text('TOTALI: '+money(current.totalAmount)+' ALL',130,end+13);
     var filename=safe(title+'_'+current.documentNo)+'.pdf';
     if(DesktopEngine&&DesktopEngine.saveBinary)DesktopEngine.saveBinary(doc.output('arraybuffer'),filename,'application/pdf');else doc.save(filename);
+  }
+  /* Android print spoolers can render a blank page when printing the live
+     single-page application.  Print a separate, static A4 document instead:
+     it contains only the already-rendered form and its exact CSS. */
+  function printExactDocument() {
+    var paper=document.querySelector('.sg96-doc');
+    if(!paper)return false;
+    var output=global.open('', '_blank');
+    if(!output){alert('Browseri bllokoi dritaren e printimit. Lejo pop-up dhe provo përsëri.');return false;}
+    var css=Array.prototype.slice.call(document.querySelectorAll('style')).map(function(node){return node.textContent||'';}).join('\n');
+    var title=esc(typeLabel(current&&current.docType)+' '+((current&&current.documentNo)||''));
+    output.document.open();
+    output.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+title+'</title><style>'+css+'html,body{background:#fff!important;margin:0!important}.sg96-doc{display:block!important}.sg96-paper{display:block!important;margin:0 auto!important;box-shadow:none!important}@page{size:A4;margin:0}</style></head><body><main class="sg96-doc">'+paper.innerHTML+'</main></body></html>');
+    output.document.close();
+    global.setTimeout(function(){try{output.focus();output.print();}catch(_e){}},450);
+    return true;
   }
   function styles() { var s=document.createElement('style');s.textContent='html,body{margin:0;background:#e5e7eb;font-family:Arial;color:#111}.sg96-tools{position:sticky;top:0;z-index:4;display:flex;justify-content:center;gap:8px;padding:9px;background:#fff;border-bottom:1px solid #ccc}.sg96-tools button{padding:9px 14px;border:1px solid #bbb;border-radius:6px;background:#fff;font-weight:700}.sg96-paper{width:210mm;min-height:297mm;margin:12px auto;background:#fff;padding:10mm;box-sizing:border-box}.sg96-title,.sg96-wh-head{display:grid;grid-template-columns:1fr 2fr;border:2px solid #111}.sg96-wh-head{grid-template-columns:1fr 1.5fr 1fr}.sg96-title>div,.sg96-wh-head>div{padding:8px;border-right:1px solid #111}.sg96-title h1,.sg96-wh-head h1{text-align:center;margin:3px;font-size:25px}.sg96-title small,.sg96-wh-head small{display:block;margin-top:5px}.sg96-parties{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:9px 0}.sg96-parties>div,.sg96-meta>div{border:1px solid #111;padding:8px}.sg96-parties p{margin:4px 0;font-size:11px}.sg96-meta{display:grid;grid-template-columns:1fr 1fr}.sg96-meta>div{display:grid;grid-template-columns:1fr 1fr}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #111;padding:5px;font-size:10px;height:24px}th:nth-child(2){width:38%}.r{text-align:right}.sg96-totals{width:42%;margin-left:auto}.sg96-totals p{display:flex;justify-content:space-between;border:1px solid #111;margin:0;padding:7px}.sg96-sign{display:grid;grid-template-columns:repeat(4,1fr);margin-top:32px}.sg96-sign div{text-align:center;border-top:1px solid #111;padding:6px}.sg96-trace{margin-top:18px;border:1px solid #94a3b8;padding:9px}.sg96-trace h3{margin:0 0 8px;font-size:12px}.sg96-trace>div{display:flex;gap:6px;flex-wrap:wrap}.sg96-trace button{display:grid;text-align:left;border:1px solid #714b67;background:#f8f2f6;border-radius:6px;padding:7px;cursor:pointer}.sg96-trace span,.sg96-trace small{font-size:9px}@media(max-width:800px){.sg96-paper{margin:0;min-width:210mm}.sg96-doc{overflow:auto}}@media print{.sg96-tools{display:none}.sg96-paper{margin:0;padding:8mm}@page{size:A4;margin:0}}';document.head.appendChild(s); }
   /* Exact A4 hierarchy used by the invoice, goods and finance print models. */
@@ -226,7 +239,7 @@
       current.traceNodes=(trace.nodes||[]).map(camel);bodyHtml=documentHtml(current);
     }
     styles();documentStyleRefinement();exactReferenceStyles();document.body.innerHTML='<div class="sg96-tools"><button data-back>Kthehu</button><button data-print>Print</button><button data-pdf>PDF</button><button data-excel>Excel</button></div><main class="sg96-doc">'+bodyHtml+'</main>';removeLegacyTableActions();global.setTimeout(removeLegacyTableActions,50);
-    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=function(){global.print();};document.querySelector('[data-pdf]').textContent='Print / Ruaj PDF';document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
+    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=function(){printExactDocument();};document.querySelector('[data-pdf]').textContent='Print / Ruaj PDF';document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
     document.body.onclick=function(e){var b=e.target.closest('[data-open-doc]');if(b)openDocument(b.dataset.openDoc,b.dataset.openKind||'business_document');};
   }
 
