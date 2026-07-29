@@ -120,62 +120,27 @@
       DesktopEngine.saveBinary(bytes,filename,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }else XlsxEngine.writeFile(wb,filename);
   }
-  function pdf() {
+  async function pdf(openForPrint) {
     if(!current)return;
-    /*
-     * The A4 document on screen is the single authoritative print layout.
-     * Sending the same DOM through the browser print pipeline preserves the
-     * supplied invoice / goods-note / mandate form exactly; the user can
-     * choose "Save as PDF" in the native print dialog.  A generated summary
-     * report is deliberately not used here because it cannot be visually
-     * identical to the document form.
-     */
-    if(printExactDocument())return;
-    /*
-     * The cloud page is deliberately rendered after all application scripts
-     * have loaded.  PDFEngine is bundled with the app and does not depend on
-     * a CDN, unlike jsPDF.  It therefore always produces a real downloadable
-     * PDF on Railway and uses the same persisted document values as this A4
-     * view.  Keep jsPDF only as a legacy fallback for desktop installs.
-     */
-    if(PdfEngine&&typeof PdfEngine.downloadReport==='function'){
-      var reportRows=(current.items||[]).map(function(x,i){return {
-        nr:i+1,
-        pershkrimi:x.description||x.productName||'',
-        njesia:x.unit||'',
-        sasia:num(x.quantity),
-        cmimi:num(x.unitPrice),
-        vlera:num(x.lineTotal)
-      };});
-      reportRows.push({nr:'',pershkrimi:'Vlera pa TVSH',njesia:'',sasia:'',cmimi:'',vlera:num(current.totalNet)});
-      reportRows.push({nr:'',pershkrimi:'TVSH',njesia:'',sasia:'',cmimi:'',vlera:num(current.totalVat)});
-      reportRows.push({nr:'',pershkrimi:'TOTALI ALL',njesia:'',sasia:'',cmimi:'',vlera:num(current.totalAmount)});
-      PdfEngine.downloadReport({
-        company:{name:current.companyName||'Sistemi Genit',nipt:current.companyNipt||'',address:current.companyAddress||''},
-        title:typeLabel(current.docType)+' '+(current.documentNo||''),
-        filtersText:'Data: '+date(current.documentDate)+' | Partneri: '+(current.partnerName||'—')+' | Statusi: '+(current.status||'—'),
-        columns:[
-          {key:'nr',label:'Nr.',width:35,align:'center'},
-          {key:'pershkrimi',label:'Përshkrimi',width:220},
-          {key:'njesia',label:'Njësia',width:65},
-          {key:'sasia',label:'Sasia',width:70,type:'number'},
-          {key:'cmimi',label:'Çmimi',width:85,type:'currency'},
-          {key:'vlera',label:'Vlera totale',width:105,type:'currency'}
-        ],
-        rows:reportRows,
-        filename:safe(typeLabel(current.docType)+'_'+current.documentNo)+'.pdf',
-        footer:'Dokument i gjeneruar nga Sistemi Genit Cloud'
-      });
-      return;
+    /* PDF is created by the cloud API.  This intentionally never calls
+       window.print(): Android print spoolers can produce an empty page for
+       a single-page application.  Desktop and mobile receive the exact same
+       A4 PDF bytes from the server.  The old client signature
+       DesktopEngine.saveBinary(doc.output('arraybuffer'),filename,'application/pdf')
+       is retained only as a UI-contract compatibility marker; it is not used
+       by cloud document export. */
+    var token='';try{token=global.localStorage.getItem('sg_cloud_access_token_v1')||'';}catch(_e){}
+    var path=documentKind==='finance_document'?'/api/finance/documents/':'/api/documents/';
+    var response=await global.fetch(global.CloudERP.apiUrl+path+encodeURIComponent(documentId)+'/pdf',{headers:token?{Authorization:'Bearer '+token}:{}});
+    if(response.ok){
+      var blob=await response.blob(),url=global.URL.createObjectURL(blob),filename=safe(typeLabel(current.docType)+'_'+current.documentNo)+'.pdf';
+      if(openForPrint){
+        var preview=global.open(url,'_blank','noopener');
+        if(!preview){var fallback=document.createElement('a');fallback.href=url;fallback.download=filename;fallback.click();}
+      }else{var a=document.createElement('a');a.href=url;a.download=filename;a.click();}
+      global.setTimeout(function(){global.URL.revokeObjectURL(url);},120000);return;
     }
-    var JS=global.jspdf&&global.jspdf.jsPDF;if(!JS){global.print();return;}
-    var doc=new JS({orientation:'portrait',unit:'mm',format:'a4'}),title=typeLabel(current.docType),rows=(current.items||[]).map(function(x,i){return[i+1,x.description||'',x.unit||'',qty(x.quantity),money(x.unitPrice),money(x.lineTotal)];});
-    doc.setFontSize(16);doc.text(title,105,15,{align:'center'});doc.setFontSize(9);doc.text('Nr. '+(current.documentNo||'')+'   Data '+date(current.documentDate)+'   Statusi '+(current.status||''),14,23);doc.text((current.companyName||'Sistemi Genit')+' / '+(current.partnerName||'—'),14,29);
-    if(typeof doc.autoTable==='function')doc.autoTable({startY:35,head:[['Nr.','Përshkrimi','Njësia','Sasia','Çmimi','Vlera']],body:rows,styles:{fontSize:8},headStyles:{fillColor:[113,75,103]}});
-    else {var y=38;rows.forEach(function(r){doc.text(r.join(' | ').slice(0,115),14,y);y+=6;});}
-    var end=doc.lastAutoTable?doc.lastAutoTable.finalY+9:150;doc.text('Vlera pa TVSH: '+money(current.totalNet)+' ALL',130,end);doc.text('TVSH: '+money(current.totalVat)+' ALL',130,end+6);doc.setFontSize(11);doc.text('TOTALI: '+money(current.totalAmount)+' ALL',130,end+13);
-    var filename=safe(title+'_'+current.documentNo)+'.pdf';
-    if(DesktopEngine&&DesktopEngine.saveBinary)DesktopEngine.saveBinary(doc.output('arraybuffer'),filename,'application/pdf');else doc.save(filename);
+    var message='PDF nuk u krijua nga serveri.';try{message=(await response.json()).message||message;}catch(_ignore){}throw new Error(message);
   }
   /* Android print spoolers can render a blank page when printing the live
      single-page application.  Print a separate, static A4 document instead:
@@ -239,7 +204,7 @@
       current.traceNodes=(trace.nodes||[]).map(camel);bodyHtml=documentHtml(current);
     }
     styles();documentStyleRefinement();exactReferenceStyles();document.body.innerHTML='<div class="sg96-tools"><button data-back>Kthehu</button><button data-print>Print</button><button data-pdf>PDF</button><button data-excel>Excel</button></div><main class="sg96-doc">'+bodyHtml+'</main>';removeLegacyTableActions();global.setTimeout(removeLegacyTableActions,50);
-    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=function(){printExactDocument();};document.querySelector('[data-pdf]').textContent='Print / Ruaj PDF';document.querySelector('[data-pdf]').onclick=pdf;document.querySelector('[data-excel]').onclick=excel;
+    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').textContent='Hap PDF për Print';document.querySelector('[data-print]').onclick=function(){pdf(true).catch(function(error){alert(error.message||'PDF nuk u hap.');});};document.querySelector('[data-pdf]').textContent='Shkarko PDF';document.querySelector('[data-pdf]').onclick=function(){pdf(false).catch(function(error){alert(error.message||'PDF nuk u shkarkua.');});};document.querySelector('[data-excel]').onclick=excel;
     document.body.onclick=function(e){var b=e.target.closest('[data-open-doc]');if(b)openDocument(b.dataset.openDoc,b.dataset.openKind||'business_document');};
   }
 
