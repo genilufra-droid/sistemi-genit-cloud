@@ -2,6 +2,10 @@ FROM node:20-alpine AS build
 
 WORKDIR /workspace/apps/web
 
+# The verified self-contained web source is stored in compressed parts and is
+# restored during the build. Alpine does not include xz by default.
+RUN apk add --no-cache xz
+
 COPY package.json package-lock.json ./
 RUN npm ci --workspaces=false
 
