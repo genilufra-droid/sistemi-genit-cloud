@@ -32,6 +32,11 @@ async function authRequired(req,res,next){
 }
 const requireRoles=(...roles)=>(req,res,next)=>{if(!req.user||!roles.includes(req.user.role))return res.status(403).json({error:'FORBIDDEN',message:'Nuk keni leje për këtë veprim.'});next();};
 async function audit({tenantId,userId,action,entityType,entityId=null,companyId=null,metadata={},ip=null},client=pool){await client.query(`INSERT INTO audit_logs(id,tenant_id,user_id,action,entity_type,entity_id,company_id,metadata,ip_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,[randomUUID(),tenantId,userId,action,entityType,entityId,companyId,JSON.stringify(metadata),ip]);}
+// The underlying Phase 5 launcher owns the Socket.IO instance.  This overlay
+// cannot access it directly, so route installers receive a safe notifier just
+// like the Phase 5 overlay does.  Route persistence must never depend on a
+// realtime notification being available.
+function emitTenant() {}
 
 const router=capturedApp.router||capturedApp._router;
 if(!router?.stack||router.stack.length<2)throw new Error('Express route stack nuk u gjet për Phase 7.6.');
