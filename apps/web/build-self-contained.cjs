@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 const WEB_ROOT = __dirname;
 const BUILD_SCRIPTS = path.join(WEB_ROOT, 'build-scripts');
@@ -103,6 +103,28 @@ function copyWebSource(source, destination) {
   });
 }
 
+function restorePackedHtmlIfPresent(webRoot) {
+  const partsDir = path.join(webRoot, 'html-source-parts');
+  if (!fs.existsSync(partsDir)) return false;
+  const parts = fs.readdirSync(partsDir)
+    .filter((name) => /^xz-\d+\.b64$/.test(name))
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  if (!parts.length) return false;
+
+  const base64 = parts.map((name) => fs.readFileSync(path.join(partsDir, name), 'utf8')).join('').replace(/\s+/g, '');
+  const packedPath = path.join(webRoot, '.source-index.xz');
+  fs.writeFileSync(packedPath, Buffer.from(base64, 'base64'));
+  const result = spawnSync('xz', ['-dc', packedPath], { encoding: null, maxBuffer: 128 * 1024 * 1024 });
+  fs.rmSync(packedPath, { force: true });
+  if (result.error) throw new Error(`Nuk u hap burimi i paketuar: ${result.error.message}`);
+  if (result.status !== 0 || !result.stdout || result.stdout.length < 1_000_000) {
+    throw new Error(`Burimi i paketuar HTML është i pavlefshëm: ${String(result.stderr || '')}`);
+  }
+  fs.writeFileSync(path.join(webRoot, 'index.html'), result.stdout);
+  console.log(`Burimi web u rikthye nga ${parts.length} pjesë të paketimit.`);
+  return true;
+}
+
 if (!fs.existsSync(BUILD_SCRIPTS)) {
   throw new Error('Mungon apps/web/build-scripts. Build-i nuk mund të vazhdojë.');
 }
@@ -114,6 +136,7 @@ const temporaryScripts = path.join(temporaryRoot, 'scripts');
 try {
   fs.mkdirSync(path.dirname(temporaryWeb), { recursive: true });
   copyWebSource(WEB_ROOT, temporaryWeb);
+  restorePackedHtmlIfPresent(temporaryWeb);
   fs.cpSync(BUILD_SCRIPTS, temporaryScripts, { recursive: true });
 
   for (const patch of PATCHES) {
