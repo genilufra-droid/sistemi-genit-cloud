@@ -3,7 +3,21 @@
 const { spawn } = require('node:child_process');
 
 const serviceName = String(process.env.RAILWAY_SERVICE_NAME || '').toLowerCase();
-const workspace = serviceName.includes('api') ? 'apps/api' : 'apps/web';
+const configuredKind = String(process.env.GENIT_SERVICE_KIND || '').trim().toLowerCase();
+
+function resolveServiceKind() {
+  if (configuredKind) {
+    if (configuredKind === 'api' || configuredKind === 'web') return configuredKind;
+    throw new Error('GENIT_SERVICE_KIND duhet të jetë vetëm "api" ose "web".');
+  }
+  const isApi = serviceName.includes('api');
+  const isWeb = serviceName.includes('web');
+  if (isApi !== isWeb) return isApi ? 'api' : 'web';
+  if (!serviceName && !process.env.RAILWAY_ENVIRONMENT_ID) return 'web';
+  throw new Error('Railway service nuk identifikohet. Emërtoje genit-api/genit-web ose vendos GENIT_SERVICE_KIND.');
+}
+
+const workspace = resolveServiceKind() === 'api' ? 'apps/api' : 'apps/web';
 
 console.log(`Railway start dispatcher: ${serviceName || 'genit-web'} -> ${workspace}`);
 

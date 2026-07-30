@@ -16,6 +16,7 @@
   var documentId = query.get('sgdocId');
   var documentKind = query.get('sgdocKind') || 'business_document';
   var fidelityMode = query.get('sgdocMode') === 'fidelity' && documentId;
+  var requestedAction = query.get('sgdocAction') || '';
   var current = null;
 
   function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
@@ -23,11 +24,12 @@
   function money(value) { return num(value).toLocaleString('sq-AL',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function qty(value) { return num(value).toLocaleString('sq-AL',{minimumFractionDigits:0,maximumFractionDigits:3}); }
   function date(value) { var p=String(value||'').slice(0,10).split('-'); return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:String(value||''); }
-  function typeLabel(type) { return ({PURCHASE_RFQ:'KËRKESË PËR OFERTË',PURCHASE_ORDER:'POROSI BLERJEJE',PURCHASE_RECEIPT:'FLETË HYRJE',PURCHASE_INVOICE:'FATURË BLERJEJE',SUPPLIER_RETURN:'KTHIM FURNITORI',SALES_QUOTE:'OFERTË SHITJEJE',SALES_ORDER:'POROSI SHITJEJE',DELIVERY_NOTE:'FLETË DALJE',SALES_INVOICE:'FATURË SHITJEJE',WEIGHT_TICKET:'FORMULARI I PESHËS',CASH_RECEIPT:'MANDAT ARKËTIMI',CASH_PAYMENT:'MANDAT PAGESE',BANK_RECEIPT:'ARKËTIM BANKAR',BANK_PAYMENT:'PAGESË BANKARE'})[String(type||'').toUpperCase()]||String(type||'DOKUMENT').replace(/_/g,' '); }
+  function typeLabel(type) { return ({PURCHASE_RFQ:'KËRKESË PËR OFERTË',PURCHASE_ORDER:'POROSI BLERJEJE',PURCHASE_RECEIPT:'FLETË HYRJE',PURCHASE_INVOICE:'FATURË BLERJEJE',SUPPLIER_RETURN:'KTHIM FURNITORI',PURCHASE_RETURN:'KTHIM TE FURNITORI',SALES_QUOTE:'OFERTË SHITJEJE',SALES_ORDER:'POROSI SHITJEJE',DELIVERY_NOTE:'FLETË DALJE',SALES_INVOICE:'FATURË SHITJEJE',SALES_RETURN:'KTHIM NGA KLIENTI',WEIGHT_TICKET:'FORMULARI I PESHËS',CASH_RECEIPT:'MANDAT ARKËTIMI',CASH_PAYMENT:'MANDAT PAGESE',BANK_RECEIPT:'ARKËTIM BANKAR',BANK_PAYMENT:'PAGESË BANKARE'})[String(type||'').toUpperCase()]||String(type||'DOKUMENT').replace(/_/g,' '); }
   function safe(value) { return String(value||'Dokument').replace(/[^a-z0-9ëç_-]+/gi,'_').replace(/^_+|_+$/g,''); }
   function camel(row) { var out={}; Object.keys(row||{}).forEach(function(k){out[k.replace(/_([a-z])/g,function(_m,c){return c.toUpperCase();})]=row[k];}); return out; }
-  function fidelityUrl(id,kind) { var url=new URL(global.location.href); url.searchParams.set('sgdocId',id);url.searchParams.set('sgdocKind',kind||'business_document'); url.searchParams.set('sgdocMode','fidelity'); url.hash='document'; return url.toString(); }
+  function fidelityUrl(id,kind,action) { var url=new URL(global.location.href); url.searchParams.set('sgdocId',id);url.searchParams.set('sgdocKind',kind||'business_document'); url.searchParams.set('sgdocMode','fidelity');if(action)url.searchParams.set('sgdocAction',action);else url.searchParams.delete('sgdocAction');url.hash='document'; return url.toString(); }
   function openDocument(id,kind) { if (!id) return; global.location.href=fidelityUrl(id,kind); }
+  function openDocumentAction(id,kind,action) { if (!id) return; global.location.href=fidelityUrl(id,kind,action); }
 
   function linkedHtml(doc) {
     if(doc.traceNodes&&doc.traceNodes.length)return '<section class="sg96-trace"><h3>Gjurmueshmëria e dokumentit — nga formulari i peshës te pagesa</h3><div>'+doc.traceNodes.map(function(row){return '<button data-open-doc="'+esc(row.id)+'" data-open-kind="'+esc(row.kind)+'" class="'+(row.current?'current':'')+'"><small>'+esc(row.kind==='weight_ticket'?'Origjina':row.kind==='finance_document'?(row.accountKind==='BANK'?'Banka':'Arka'):'Dokument')+'</small><strong>'+esc(row.documentNo||typeLabel(row.label))+'</strong><span>'+esc(typeLabel(row.label))+' · '+esc(row.status||'')+'</span></button>';}).join('')+'</div></section>';
@@ -62,7 +64,7 @@
     var net=num(doc.totalNet),vat=num(doc.totalVat),total=num(doc.totalAmount);if(!net&&total)net=total-vat;
     return '<section class="sg96-paper sg96-easy-invoice"><h1>FATURË</h1><section class="sg96-easy-box"><p>Shitësi: <b>'+esc(seller||'—')+'</b></p><p>Adresa: '+esc(sellerAddress||'—')+'</p><p>Numri Unik i Identifikimit: '+esc(sellerNipt||'—')+'</p></section><section class="sg96-easy-box sg96-issue"><p>Data dhe ora e lëshimit të faturës: <b>'+date(doc.documentDate)+'</b></p><p>Numri i Faturës: <b>'+esc(doc.documentNo||'—')+'</b></p><p>Operatori: '+esc(doc.createdByName||'—')+'</p><p>Kodi i vendit të ushtrimit të veprimtarisë: '+esc(doc.warehouseName||'—')+'</p><p>Lloji i Faturës: '+esc(typeLabel(doc.docType))+'</p></section><section class="sg96-easy-box"><p>Blerësi: <b>'+esc(buyer||'—')+'</b></p><p>Adresa: '+esc(buyerAddress||'—')+'</p><p>Numri Unik i Identifikimit: '+esc(buyerNipt||'—')+'</p></section><table class="sg96-easy-table"><thead><tr><th>Nr.</th><th>Përshkrimi i Mallit ose Shërbimit</th><th>Njësia e matjes</th><th>Sasia</th><th>Çmimi për njësi pa TVSH</th><th>Zbritje %</th><th>Norma e TVSH</th><th>Vlera pa TVSH</th><th>TVSH</th><th>Vlera Totale</th></tr></thead><tbody>'+lines+'<tr class="sum"><td colspan="8"></td><td>Vlera pa TVSH</td><td>'+money(net)+'</td></tr><tr class="sum"><td colspan="8"></td><td>Vlera totale e TVSH-së</td><td>'+money(vat)+'</td></tr><tr class="sum"><td colspan="8"></td><td>Totali për tu paguar (LEK)</td><td>'+money(total)+'</td></tr></tbody></table><p class="sg96-easy-vat-title">Shpërndarja e TVSH-së</p><table class="sg96-easy-vat"><thead><tr><th>Norma e TVSH-së</th><th>Baza e tatueshme (LEK)</th><th>Vlera e TVSH-së (LEK)</th></tr></thead><tbody><tr><td>'+qty((doc.items&&doc.items[0]&&doc.items[0].vatRate)||0)+'%</td><td>'+money(net)+'</td><td>'+money(vat)+'</td></tr></tbody></table><section class="sg96-easy-footer"><p>Data dhe ora e kryerjes së pagesës: '+date(doc.paidAt||doc.documentDate)+'</p><p>Numri i identifikues i veçantë i faturës (NIVF): '+esc(doc.invoiceUuid||doc.id||'—')+'</p><p>Mënyra e pagesës: '+esc(doc.paymentMethod||'—')+'</p><table><thead><tr><th>Lloji</th><th>Sasi (LEK)</th></tr></thead><tbody><tr><td>'+esc(doc.paymentMethod||'—')+'</td><td>'+money(total)+'</td></tr></tbody></table></section>'+linkedHtml(doc)+'</section>';
   }
-  function documentHtml(doc) { if(doc.docType==='PURCHASE_RECEIPT')return warehouse(doc,false); if(doc.docType==='SUPPLIER_RETURN')return warehouse(doc,true); if(doc.docType==='DELIVERY_NOTE')return warehouse(doc,true); return business(doc); }
+  function documentHtml(doc) { if(doc.docType==='PURCHASE_RECEIPT')return warehouse(doc,false); if(doc.docType==='SUPPLIER_RETURN'||doc.docType==='PURCHASE_RETURN')return warehouse(doc,true); if(doc.docType==='DELIVERY_NOTE')return warehouse(doc,true); if(doc.docType==='SALES_RETURN')return warehouse(doc,false); return business(doc); }
   function weight(doc) {
     return '<section class="sg96-paper"><header class="sg96-title"><div><b>'+esc(doc.companyName||'SISTEMI GENIT')+'</b></div><div><h1>FORMULARI I PESHËS</h1><p>Nr. <b>'+esc(doc.documentNo||'')+'</b> · Data <b>'+date(doc.documentDate)+'</b> · Statusi <b>'+esc(doc.status||'')+'</b></p></div></header><div class="sg96-parties"><div><h3>FURNITORI / FERMERI</h3><b>'+esc(doc.partnerName||'—')+'</b><p>Artikulli: '+esc(doc.productName||'—')+'</p></div><div><h3>TRANSPORTI</h3><p>Targa: '+esc(doc.vehiclePlate||'—')+'</p><p>Magazina: '+esc(doc.warehouseName||'—')+'</p></div></div><table><thead><tr><th>Thasë / Amb.</th><th>Pesha bruto</th><th>Ambalazhi</th><th>Pesha neto</th><th>Zbritje %</th><th>Pesha pranuar</th></tr></thead><tbody><tr><td>'+qty(doc.bagsCount)+'</td><td>'+qty(doc.grossWeight)+'</td><td>'+qty(doc.packagingWeight)+'</td><td>'+qty(doc.netWeight)+'</td><td>'+qty(doc.discountPercent)+'</td><td>'+qty(doc.acceptedWeight)+'</td></tr></tbody></table><div class="sg96-totals"><p><span>Çmimi</span><b>'+money(doc.unitPrice)+'</b></p><p><span>TOTALI ALL</span><b>'+money(doc.totalAmount)+'</b></p></div><footer class="sg96-sign"><div>Operatori</div><div>Furnitori</div><div>Magazinieri</div><div>Kontrolli</div></footer>'+linkedHtml(doc)+'</section>';
   }
@@ -75,7 +77,7 @@
   function excel() {
     if(!current||!XlsxEngine)return alert('Motori Excel nuk është i disponueshëm.');
     var title=typeLabel(current.docType)+' '+current.documentNo;
-    var isMovement=current.docType==='PURCHASE_RECEIPT'||current.docType==='SUPPLIER_RETURN'||current.docType==='DELIVERY_NOTE';
+    var isMovement=current.docType==='PURCHASE_RECEIPT'||current.docType==='SUPPLIER_RETURN'||current.docType==='PURCHASE_RETURN'||current.docType==='DELIVERY_NOTE'||current.docType==='SALES_RETURN';
     var isFinance=/^(CASH|BANK)_(RECEIPT|PAYMENT)$/.test(String(current.docType||''));
     var aoa=[],headerRow=0,cols=[];
     if(isFinance){
@@ -204,28 +206,36 @@
       current.traceNodes=(trace.nodes||[]).map(camel);bodyHtml=documentHtml(current);
     }
     styles();documentStyleRefinement();exactReferenceStyles();document.body.innerHTML='<div class="sg96-tools"><button data-back>Kthehu</button><button data-print>Print</button><button data-pdf>PDF</button><button data-excel>Excel</button></div><main class="sg96-doc">'+bodyHtml+'</main>';removeLegacyTableActions();global.setTimeout(removeLegacyTableActions,50);
-    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').textContent='Hap PDF për Print';document.querySelector('[data-print]').onclick=function(){pdf(true).catch(function(error){alert(error.message||'PDF nuk u hap.');});};document.querySelector('[data-pdf]').textContent='Shkarko PDF';document.querySelector('[data-pdf]').onclick=function(){pdf(false).catch(function(error){alert(error.message||'PDF nuk u shkarkua.');});};document.querySelector('[data-excel]').onclick=excel;
+    document.querySelector('[data-back]').onclick=function(){if(global.history.length>1)global.history.back();else global.location.href=global.location.origin+'/';};document.querySelector('[data-print]').onclick=printExactDocument;document.querySelector('[data-pdf]').textContent='Shkarko PDF';document.querySelector('[data-pdf]').onclick=function(){pdf(false).catch(function(error){alert(error.message||'PDF nuk u shkarkua.');});};document.querySelector('[data-excel]').onclick=excel;
     document.body.onclick=function(e){var b=e.target.closest('[data-open-doc]');if(b)openDocument(b.dataset.openDoc,b.dataset.openKind||'business_document');};
+    if(requestedAction==='excel')global.setTimeout(excel,120);
+    if(requestedAction==='pdf')global.setTimeout(function(){pdf(false).catch(function(error){alert(error.message||'PDF nuk u shkarkua.');});},220);
+    if(requestedAction==='print')global.setTimeout(printExactDocument,220);
   }
 
   function install() {
     if(!App)return;
     App.sg96OpenDocument=openDocument;
+    App.sg96OpenDocumentAction=openDocumentAction;
     var original=App.sg72OpenDocument;
-    App.sg72OpenDocument=function(kind,id){if(kind==='business_document'&&id){openDocument(id);return;}return typeof original==='function'?original.apply(this,arguments):null;};
+    App.sg72OpenDocument=function(kind,id){if(id&&['business_document','finance_document','weight_ticket'].includes(kind)){openDocument(id,kind);return;}return typeof original==='function'?original.apply(this,arguments):null;};
     [
-      'openPurchaseInvoice','openSalesInvoice','openPurchaseReceipt','openDeliveryNote',
-      'openPurchaseOrder','openSalesOrder','openPurchaseRFQ','openSalesQuotation'
+      'openPurchaseInvoice','openSalesInvoice','openSaleInvoice','openPurchaseReceipt','openDeliveryNote',
+      'openPurchaseOrder','openSalesOrder','openPurchaseRFQ','openSalesQuotation','openSalesQuote'
     ].forEach(function(method){
       if(typeof App[method]!=='function')return;
       App[method]=function(id){if(id){openDocument(id,'business_document');return;}};
     });
+    App.openFinanceDocument=function(id){if(id){openDocument(id,'finance_document');}};
+    App.printFinanceDocument=function(id){openDocumentAction(id,'finance_document','print');};
+    App.exportFinanceDocumentPDF=function(id){openDocumentAction(id,'finance_document','pdf');};
+    App.exportFinanceDocumentExcel=function(id){openDocumentAction(id,'finance_document','excel');};
     global.addEventListener('click',function(event){
       if(fidelityMode)return;
       var row=event.target&&event.target.closest&&event.target.closest('tr[onclick]');
       if(!row)return;
       var source=row.getAttribute('onclick')||'';
-      var match=source.match(/App\.(?:openPurchaseInvoice|openSalesInvoice|openPurchaseReceipt|openDeliveryNote|openPurchaseOrder|openSalesOrder|openPurchaseRFQ|openSalesQuotation)\(['"]([^'"]+)['"]\)/);
+      var match=source.match(/App\.(?:openPurchaseInvoice|openSalesInvoice|openSaleInvoice|openPurchaseReceipt|openDeliveryNote|openPurchaseOrder|openSalesOrder|openPurchaseRFQ|openSalesQuotation|openSalesQuote)\(['"]([^'"]+)['"]\)/);
       if(!match)return;
       event.preventDefault();event.stopImmediatePropagation();openDocument(match[1],'business_document');
     },true);
@@ -248,6 +258,6 @@
     if(document.readyState==='complete')startAfterBootstrap();
     else global.addEventListener('load',startAfterBootstrap,{once:true});
   }
-  global.SGPhase96={openDocument:openDocument,url:fidelityUrl,excel:excel,pdf:pdf};
+  global.SGPhase96={openDocument:openDocument,openDocumentAction:openDocumentAction,url:fidelityUrl,excel:excel,pdf:pdf};
 })(window);
 /* SG_PHASE96_DOCUMENT_FIDELITY_END */

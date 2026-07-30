@@ -194,8 +194,8 @@
   }
   function docStore(docType) {
     return {
-      PURCHASE_RFQ:'purchaseRFQs', PURCHASE_ORDER:'purchaseOrders', PURCHASE_RECEIPT:'purchaseReceipts', PURCHASE_INVOICE:'purchaseInvoices', SUPPLIER_RETURN:'purchaseReturns',
-      SALES_QUOTE:'salesQuotations', SALES_ORDER:'salesOrders', DELIVERY_NOTE:'deliveryNotes', SALES_INVOICE:'salesInvoices'
+      PURCHASE_RFQ:'purchaseRFQs', PURCHASE_ORDER:'purchaseOrders', PURCHASE_RECEIPT:'purchaseReceipts', PURCHASE_INVOICE:'purchaseInvoices', SUPPLIER_RETURN:'supplierReturns', PURCHASE_RETURN:'purchaseReturns',
+      SALES_QUOTE:'salesQuotations', SALES_ORDER:'salesOrders', DELIVERY_NOTE:'deliveryNotes', SALES_INVOICE:'salesInvoices', SALES_RETURN:'salesReturns'
     }[docType];
   }
   function mapDocument(row) {
@@ -208,7 +208,7 @@
       id:x.id, companyId:x.companyId, warehouseId:x.warehouseId, partnerId:x.partnerId, docType:x.docType,
       sourceDocumentId:x.sourceDocumentId || '', sourceDocumentType:x.sourceDocumentType || '', sourceDocumentNo:x.sourceDocumentNo || '',
       docNumber:x.documentNo, date:x.documentDate,
-      status:x.status === 'CONFIRMED' && ['PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','DELIVERY_NOTE','SALES_INVOICE'].indexOf(x.docType) >= 0 ? 'POSTED' : x.status,
+      status:x.status === 'CONFIRMED' && ['PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','PURCHASE_RETURN','DELIVERY_NOTE','SALES_INVOICE','SALES_RETURN'].indexOf(x.docType) >= 0 ? 'POSTED' : x.status,
       notes:x.notes || '', quantity:quantity, totalNet:num(x.totalNet), vatAmount:num(x.totalVat), totalAmount:num(x.totalAmount),
       paidAmount:num(x.paidAmount), remainingAmount:num(x.remainingAmount),
       paymentStatus:x.paymentStatus || (num(x.remainingAmount)>0?'UNPAID':'PAID'), lines:lines,
@@ -244,7 +244,7 @@
     App.data.weightForms = (bootstrapData.weights || []).map(mapWeight).filter(function (x) { return !companyId || x.companyId === companyId; });
     App.data.stockMovements = (bootstrapData.stock || []).map(function (row) { var x=camel(row); return { id:x.id || [x.companyId,x.warehouseId,x.productId].join(':'), companyId:x.companyId, warehouseId:x.warehouseId, productId:x.productId, productName:x.name || '', quantityBase:num(x.quantityBase), quantity:num(x.quantityBase), balance:num(x.quantityBase), unit:x.baseUnit || 'copë' }; });
 
-    var documentStores = ['purchaseRFQs','purchaseOrders','purchaseReceipts','purchaseInvoices','purchaseReturns','salesQuotations','salesOrders','deliveryNotes','salesInvoices'];
+    var documentStores = ['purchaseRFQs','purchaseOrders','purchaseReceipts','purchaseInvoices','supplierReturns','purchaseReturns','salesQuotations','salesOrders','deliveryNotes','salesInvoices','salesReturns'];
     documentStores.forEach(function (key) { App.data[key] = []; });
     (bootstrapData.documents || []).forEach(function (row) { var x=camel(row), store=docStore(x.docType); if(store) App.data[store].push(mapDocument(row)); });
     App.data.supplierLedger = [];
@@ -464,7 +464,7 @@
   App.deleteCloudDocument = async function (id, returnView) {
     try {
       Auth.requirePermission('documents.cancel');
-      var stores = ['purchaseRFQs','purchaseOrders','purchaseReceipts','purchaseInvoices','purchaseReturns','salesQuotations','salesOrders','deliveryNotes','salesInvoices'];
+      var stores = ['purchaseRFQs','purchaseOrders','purchaseReceipts','purchaseInvoices','supplierReturns','purchaseReturns','salesQuotations','salesOrders','deliveryNotes','salesInvoices','salesReturns'];
       var document = null;
       for (var i=0;i<stores.length && !document;i++) {
         document = (this.data[stores[i]] || []).find(function (row) { return row.id === id; });
@@ -494,7 +494,7 @@
     var viewByType = {
       purchaseRFQ:'purchaseRFQs',purchaseOrder:'purchaseOrders',purchaseReceipt:'purchaseReceipts',
       salesQuotation:'salesQuotations',salesOrder:'salesOrders',deliveryNote:'deliveryNotes',
-      supplierCreditNote:'supplierCreditNotes',purchaseReturn:'purchaseReturns',creditNote:'creditNotes'
+      supplierCreditNote:'supplierCreditNotes',supplierReturn:'supplierReturns',purchaseReturn:'purchaseReturns',salesReturn:'salesReturns',creditNote:'creditNotes'
     };
     return this.deleteCloudDocument(id,viewByType[type] || this.currentView);
   };

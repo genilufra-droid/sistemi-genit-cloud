@@ -12,6 +12,7 @@ const requiredMarkers = [
   'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
   'SG_PHASE92_UNIVERSAL_ACTIONS_START',
   'SG_PHASE96_DOCUMENT_FIDELITY_START',
+  'SG_PHASE97_CLOUD_RETURNS_START',
 ];
 for (const marker of requiredMarkers) {
   assert.ok(html.includes(marker), `Build-i final duhet të përmbajë ${marker}.`);
@@ -57,7 +58,26 @@ assert.ok(html.includes("sgdocMode','fidelity'"), 'Dokumenti duhet të hapet në
 assert.ok(html.includes('linkedDocuments'), 'Pamja reale duhet të shfaqë dokumentet pasuese.');
 assert.ok(html.includes('sourceDocumentNo'), 'Pamja reale duhet të shfaqë dokumentin burim.');
 assert.ok(html.includes('Gjurmueshmëria e dokumentit — nga formulari i peshës te pagesa'), 'Gjurmueshmëria duhet të lidhë peshën, dokumentet dhe pagesën.');
-assert.ok(html.includes("doc.save(safe(title+'_'+current.documentNo)+'.pdf')"), 'PDF duhet të shkarkohet si skedar real.');
+const phase96Start = html.lastIndexOf('/* SG_PHASE96_DOCUMENT_FIDELITY_START');
+const phase96End = html.indexOf('/* SG_PHASE96_DOCUMENT_FIDELITY_END */', phase96Start);
+assert.ok(phase96Start >= 0 && phase96End > phase96Start, 'Moduli final i besnikërisë së dokumentit mungon.');
+const phase96 = html.slice(phase96Start, phase96End);
+assert.ok(phase96.includes('sgdocAction'), 'Veprimet e eksportit duhet të kalojnë në dokumentin e unifikuar.');
+assert.ok(phase96.includes('printExactDocument'), 'Printimi duhet të përdorë pamjen e njëjtë A4 të dokumentit.');
+assert.ok(phase96.includes("'/api/documents/'"), 'PDF i dokumentit duhet të merret nga endpoint-i real i cloud-it.');
+for (const method of ['printFinanceDocument', 'exportFinanceDocumentPDF', 'exportFinanceDocumentExcel']) {
+  assert.match(phase96, new RegExp(`App\\.${method}\\s*=\\s*function\\b`), `Eksporti financiar duhet të përdorë dokumentin e unifikuar: ${method}.`);
+}
+
+const phase97Start = html.lastIndexOf('/* SG_PHASE97_CLOUD_RETURNS_START');
+const phase97End = html.indexOf('/* SG_PHASE97_CLOUD_RETURNS_END */', phase97Start);
+assert.ok(phase97Start >= 0 && phase97End > phase97Start, 'Rrjedha cloud e kthimit te furnitori mungon.');
+const phase97 = html.slice(phase97Start, phase97End);
+for (const method of ['sg97CreateSupplierReturn', 'sg97SubmitSupplierReturn', 'sg97CancelSupplierReturn', 'view_purchaseReturns']) {
+  assert.match(phase97, new RegExp(`App\\.${method}\\s*=`), `Mungon veprimi cloud ${method}.`);
+}
+assert.ok(phase97.includes("targetType: 'PURCHASE_RETURN'"), 'Kthimi duhet të krijohet nga pranimi burim.');
+assert.ok(phase97.includes("'/cancel'"), 'Kthimi duhet të ketë anulim që rikthen stokun.');
 
 const appDefinitions = new Set([
   ...[...html.matchAll(/App\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?function\b/g)].map((match) => match[1]),

@@ -9,11 +9,23 @@ import { installPhase98SupplierReturnRoutes, migratePhase98SupplierReturns } fro
 
 const originalCreateServer=http.createServer;
 let capturedApp=null;
-http.createServer=function capturePhase76App(app,...args){capturedApp=app;return originalCreateServer.call(this,app,...args);};
+let deferredListen=null;
+/* Do not allow Railway to see a ready health endpoint until all follow-on
+   report, archive, PDF and return migrations are complete. */
+http.createServer=function capturePhase76App(app,...args){
+  capturedApp=app;
+  const server=originalCreateServer.call(this,app,...args);
+  const originalListen=server.listen;
+  server.listen=function deferPhase76Listen(...listenArgs){
+    deferredListen={server,originalListen,listenArgs};
+    return server;
+  };
+  return server;
+};
 
 await import('./phase75-query-hotfix-launcher.js');
 http.createServer=originalCreateServer;
-if(!capturedApp)throw new Error('Phase 7.6 nuk arriti të kapë Express API.');
+if(!capturedApp||!deferredListen)throw new Error('Phase 7.6 nuk arriti të kapë Express API para nisjes së serverit.');
 
 const{Pool}=pg;
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false,max:6,idleTimeoutMillis:30000});
@@ -32,10 +44,8 @@ async function authRequired(req,res,next){
 }
 const requireRoles=(...roles)=>(req,res,next)=>{if(!req.user||!roles.includes(req.user.role))return res.status(403).json({error:'FORBIDDEN',message:'Nuk keni leje për këtë veprim.'});next();};
 async function audit({tenantId,userId,action,entityType,entityId=null,companyId=null,metadata={},ip=null},client=pool){await client.query(`INSERT INTO audit_logs(id,tenant_id,user_id,action,entity_type,entity_id,company_id,metadata,ip_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,[randomUUID(),tenantId,userId,action,entityType,entityId,companyId,JSON.stringify(metadata),ip]);}
-// The underlying Phase 5 launcher owns the Socket.IO instance.  This overlay
-// cannot access it directly, so route installers receive a safe notifier just
-// like the Phase 5 overlay does.  Route persistence must never depend on a
-// realtime notification being available.
+// The underlying Phase 5 launcher owns the Socket.IO instance.  Follow-on
+// routes receive a safe notifier, so persistence never depends on realtime.
 function emitTenant() {}
 
 const router=capturedApp.router||capturedApp._router;
@@ -60,3 +70,5 @@ if(modulesLayer?.route?.stack?.length){
 }
 
 console.log('Sistemi Genit Cloud Phase 8.4: Inventory dhe Arkiva Elektronike cloud installed.');
+deferredListen.server.listen=deferredListen.originalListen;
+deferredListen.originalListen.apply(deferredListen.server,deferredListen.listenArgs);

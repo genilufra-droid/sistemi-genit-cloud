@@ -5,10 +5,11 @@ import { refreshInvoicePayment } from './phase5-finance.js';
 const WRITE_ROLES = ['SUPER_ADMIN','COMPANY_ADMIN','MANAGER','FINANCIER','MAGAZINIER','OPERATOR_PESHORE','SHITES'];
 export const DOCUMENT_TYPES = [
   'PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE',
-  'SUPPLIER_RETURN',
-  'SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE',
+  'SUPPLIER_RETURN','PURCHASE_RETURN',
+  'SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE','SALES_RETURN',
 ];
-const STOCK_TYPES = { PURCHASE_RECEIPT: 1, SUPPLIER_RETURN: -1, DELIVERY_NOTE: -1 };
+const STOCK_TYPES = { PURCHASE_RECEIPT: 1, SUPPLIER_RETURN: -1, PURCHASE_RETURN: -1, DELIVERY_NOTE: -1, SALES_RETURN: 1 };
+const RETURN_TYPES = new Set(['PURCHASE_RETURN','SALES_RETURN']);
 
 export async function migratePhase2Documents(db) {
   await db.query(`
@@ -18,7 +19,7 @@ export async function migratePhase2Documents(db) {
       company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
       warehouse_id UUID REFERENCES warehouses(id) ON DELETE RESTRICT,
       partner_id UUID REFERENCES business_partners(id) ON DELETE RESTRICT,
-      doc_type VARCHAR(40) NOT NULL CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE')),
+      doc_type VARCHAR(40) NOT NULL CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','PURCHASE_RETURN','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE','SALES_RETURN')),
       document_no VARCHAR(80) NOT NULL,
       document_date DATE NOT NULL DEFAULT CURRENT_DATE,
       status VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','CONFIRMED','CANCELLED')),
@@ -36,9 +37,14 @@ export async function migratePhase2Documents(db) {
     ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
     ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS source_document_id UUID REFERENCES business_documents(id) ON DELETE SET NULL;
     ALTER TABLE business_documents ADD COLUMN IF NOT EXISTS source_document_type VARCHAR(40);
+    DROP INDEX IF EXISTS uq_business_document_conversion;
     CREATE UNIQUE INDEX IF NOT EXISTS uq_business_document_conversion
       ON business_documents(tenant_id,source_document_id,doc_type)
-      WHERE source_document_id IS NOT NULL;
+      WHERE source_document_id IS NOT NULL AND doc_type NOT IN ('SUPPLIER_RETURN','PURCHASE_RETURN','SALES_RETURN');
+
+    ALTER TABLE business_documents DROP CONSTRAINT IF EXISTS business_documents_doc_type_check;
+    ALTER TABLE business_documents ADD CONSTRAINT business_documents_doc_type_check
+      CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','PURCHASE_RETURN','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE','SALES_RETURN'));
 
     CREATE TABLE IF NOT EXISTS business_document_items (
       id UUID PRIMARY KEY,
@@ -80,6 +86,15 @@ const documentSchema = z.object({
   documentDate: z.string().date(),
   notes: z.string().trim().max(2000).optional().default(''),
   items: z.array(itemSchema).min(1),
+});
+
+const conversionSchema = z.object({
+  targetType: z.enum(DOCUMENT_TYPES),
+  returnItems: z.array(z.object({
+    sourceItemId: z.string().uuid(),
+    quantity: z.coerce.number().min(0),
+    freeQuantity: z.coerce.number().min(0).default(0),
+  }).refine((line) => line.quantity > 0 || line.freeQuantity > 0, 'Vendosni sasi për kthim.')).min(1).optional(),
 });
 
 export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRoles, assertCompanyAccess, audit, emitTenant }) {
@@ -146,6 +161,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
     const client = await pool.connect();
     try {
       const input = documentSchema.parse(req.body);
+      if (RETURN_TYPES.has(input.docType)) throw requestError('Kthimi krijohet nga dokumenti burim, jo si dokument i pavarur.',400);
       await client.query('BEGIN');
       const prepared = await prepareDocumentInput(client, req.user, input, assertCompanyAccess);
       const documentNo = input.documentNo || await nextDocumentNo(client,req.user.tenant_id,input.companyId,input.docType);
@@ -240,7 +256,8 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
   app.post('/api/documents/:id/convert', authRequired, requireRoles(...WRITE_ROLES), async (req,res,next) => {
     const client = await pool.connect();
     try {
-      const targetType = z.enum(DOCUMENT_TYPES).parse(req.body?.targetType);
+      const conversion = conversionSchema.parse(req.body);
+      const targetType = conversion.targetType;
       await client.query('BEGIN');
       const source = await lockDocument(client,req.params.id,req.user.tenant_id);
       await assertCompanyAccess(req.user,source.company_id,client);
@@ -248,13 +265,17 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       const allowed = {
         PURCHASE_RFQ:['PURCHASE_ORDER'],
         PURCHASE_ORDER:['PURCHASE_RECEIPT'],
-        PURCHASE_RECEIPT:['PURCHASE_INVOICE'],
+        PURCHASE_RECEIPT:['PURCHASE_INVOICE','PURCHASE_RETURN'],
         SALES_QUOTE:['SALES_ORDER'],
         SALES_ORDER:['DELIVERY_NOTE'],
-        DELIVERY_NOTE:['SALES_INVOICE'],
+        DELIVERY_NOTE:['SALES_INVOICE','SALES_RETURN'],
       };
       if(!(allowed[source.doc_type]||[]).includes(targetType)) {
         throw requestError(`Konvertimi ${source.doc_type} → ${targetType} nuk lejohet.`,400);
+      }
+      const isReturn=RETURN_TYPES.has(targetType);
+      if(isReturn&&source.status!=='CONFIRMED') {
+        throw requestError('Kthimi mund të krijohet vetëm nga dokumenti burim i postuar.',409);
       }
       if(source.status==='DRAFT') {
         // A document may be converted directly from Draft in the UI.  For stock
@@ -273,7 +294,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
           metadata:{docType:source.doc_type,documentNo:source.document_no,automatic:true,reason:'conversion'},ip:req.ip,
         },client);
       }
-      const existing = await client.query(
+      const existing = isReturn ? {rows:[]} : await client.query(
         'SELECT * FROM business_documents WHERE tenant_id=$1 AND source_document_id=$2 AND doc_type=$3 LIMIT 1',
         [req.user.tenant_id,source.id,targetType],
       );
@@ -298,11 +319,14 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         await client.query('COMMIT');
         return res.json(existing.rows[0]);
       }
-      const sourceItems = await readItems(client,source.id);
+      const originalSourceItems = await readItems(client,source.id);
+      const sourceItems = isReturn
+        ? await returnableItems(client,req.user.tenant_id,source,targetType,originalSourceItems,conversion.returnItems)
+        : originalSourceItems;
       if(!sourceItems.length) throw requestError('Dokumenti burim nuk ka artikuj.',409);
       const id=randomUUID();
       const documentNo=await nextDocumentNo(client,req.user.tenant_id,source.company_id,targetType);
-      const autoConfirm=['PURCHASE_RECEIPT','PURCHASE_INVOICE','DELIVERY_NOTE','SALES_INVOICE'].includes(targetType);
+      const autoConfirm=['PURCHASE_RECEIPT','PURCHASE_INVOICE','PURCHASE_RETURN','DELIVERY_NOTE','SALES_INVOICE','SALES_RETURN'].includes(targetType);
       const {rows}=await client.query(`
         INSERT INTO business_documents(
           id,tenant_id,company_id,warehouse_id,partner_id,doc_type,document_no,document_date,status,notes,
@@ -310,8 +334,8 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
         ) VALUES($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE,$8,$9,$10,$11,$12,$13,$14,$15,CASE WHEN $16::boolean THEN NOW() ELSE NULL END) RETURNING *`,[
         id,req.user.tenant_id,source.company_id,source.warehouse_id,source.partner_id,targetType,documentNo,
         autoConfirm?'CONFIRMED':'DRAFT',
-        `Krijuar nga ${source.document_no}${source.notes?` — ${source.notes}`:''}`,
-        source.total_net,source.total_vat,source.total_amount,req.user.id,source.id,source.doc_type,autoConfirm,
+        `${isReturn?'Kthim nga':'Krijuar nga'} ${source.document_no}${source.notes?` — ${source.notes}`:''}`,
+        totalOf(sourceItems,'line_net'),totalOf(sourceItems,'line_vat'),totalOf(sourceItems,'line_total'),req.user.id,source.id,source.doc_type,autoConfirm,
       ]);
       for(const item of sourceItems) {
         await client.query(`
@@ -329,7 +353,7 @@ export function installPhase2DocumentRoutes({ app, pool, authRequired, requireRo
       await audit({
         tenantId:req.user.tenant_id,userId:req.user.id,action:'DOCUMENT_CONVERT',entityType:'business_document',
         entityId:id,companyId:source.company_id,
-        metadata:{sourceId:source.id,sourceType:source.doc_type,sourceNo:source.document_no,targetType,documentNo,autoConfirmed:autoConfirm},ip:req.ip,
+        metadata:{sourceId:source.id,sourceType:source.doc_type,sourceNo:source.document_no,targetType,documentNo,autoConfirmed:autoConfirm,isReturn},ip:req.ip,
       },client);
       await client.query('COMMIT');
       emitTenant(req.user.tenant_id,'documents',{action:'converted',id,docType:targetType,sourceId:source.id});
@@ -519,6 +543,54 @@ async function readItems(client,documentId) {
   return (await client.query('SELECT * FROM business_document_items WHERE document_id=$1 ORDER BY created_at',[documentId])).rows;
 }
 
+function totalOf(items,key) {
+  return items.reduce((total,item)=>total+Number(item[key]||0),0);
+}
+
+/* Only the still-returnable portion of a confirmed receipt/delivery may be
+   turned into a new partial return.  Previous cancelled returns do not count. */
+async function returnableItems(client,tenantId,source,targetType,sourceItems,requestedLines) {
+  const {rows:previousRows}=await client.query(
+    `SELECT i.product_id,COALESCE(SUM(i.quantity),0)::numeric AS quantity,
+       COALESCE(SUM(i.free_quantity),0)::numeric AS free_quantity
+     FROM business_documents d
+     JOIN business_document_items i ON i.document_id=d.id
+     WHERE d.tenant_id=$1 AND d.source_document_id=$2 AND d.doc_type=$3 AND d.status<>'CANCELLED'
+     GROUP BY i.product_id`,
+    [tenantId,source.id,targetType],
+  );
+  const used=new Map(previousRows.map((row)=>[row.product_id,{quantity:Number(row.quantity||0),freeQuantity:Number(row.free_quantity||0)}]));
+  const sourceById=new Map(sourceItems.map((item)=>[item.id,item]));
+  const requested=new Map();
+  for(const line of requestedLines||[]) {
+    if(!sourceById.has(line.sourceItemId)) throw requestError('Një rresht kthimi nuk i përket dokumentit burim.',400);
+    if(requested.has(line.sourceItemId)) throw requestError('I njëjti rresht kthimi është zgjedhur më shumë se një herë.',400);
+    requested.set(line.sourceItemId,{quantity:Number(line.quantity||0),freeQuantity:Number(line.freeQuantity||0)});
+  }
+  const result=[];
+  for(const item of sourceItems) {
+    const prior=used.get(item.product_id)||{quantity:0,freeQuantity:0};
+    const originalQuantity=Number(item.quantity||0),originalFree=Number(item.free_quantity||0);
+    const priorQuantity=Math.min(originalQuantity,prior.quantity);
+    const priorFree=Math.min(originalFree,prior.freeQuantity);
+    prior.quantity=Math.max(0,prior.quantity-originalQuantity);
+    prior.freeQuantity=Math.max(0,prior.freeQuantity-originalFree);
+    used.set(item.product_id,prior);
+    const availableQuantity=Math.max(0,originalQuantity-priorQuantity);
+    const availableFree=Math.max(0,originalFree-priorFree);
+    const wanted=requestedLines ? (requested.get(item.id)||{quantity:0,freeQuantity:0}) : {quantity:availableQuantity,freeQuantity:availableFree};
+    if(wanted.quantity>availableQuantity+0.000001||wanted.freeQuantity>availableFree+0.000001) {
+      throw requestError(`Sasia e kthimit për ${item.description} tejkalon sasinë e mbetur.`,409);
+    }
+    if(wanted.quantity<=0&&wanted.freeQuantity<=0) continue;
+    const lineNet=wanted.quantity*Number(item.unit_price||0);
+    const lineVat=lineNet*Number(item.vat_rate||0)/100;
+    result.push({...item,quantity:wanted.quantity,free_quantity:wanted.freeQuantity,line_net:lineNet,line_vat:lineVat,line_total:lineNet+lineVat});
+  }
+  if(!result.length) throw requestError('Nuk ka sasi të mbetur për kthim.',409);
+  return result;
+}
+
 async function insertStockMovement(client,input) {
   await client.query(`
     INSERT INTO stock_movements(
@@ -570,7 +642,7 @@ async function nextDocumentNo(client,tenantId,companyId,type) {
     FROM business_documents
     WHERE tenant_id=$1 AND company_id=$2 AND doc_type=$3
   `,[tenantId,companyId,type]);
-  const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'FH',PURCHASE_INVOICE:'FB',SUPPLIER_RETURN:'KF',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS'}[type]||'DOK';
+  const prefix={PURCHASE_RFQ:'KO',PURCHASE_ORDER:'PB',PURCHASE_RECEIPT:'FH',PURCHASE_INVOICE:'FB',SUPPLIER_RETURN:'KF',PURCHASE_RETURN:'KB',SALES_QUOTE:'OS',SALES_ORDER:'PS',DELIVERY_NOTE:'FD',SALES_INVOICE:'FS',SALES_RETURN:'KS'}[type]||'DOK';
   return `${prefix}-${new Date().getFullYear()}-${String(rows[0].n).padStart(5,'0')}`;
 }
 

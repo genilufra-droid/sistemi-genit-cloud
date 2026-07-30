@@ -54,7 +54,7 @@ export async function migratePhase98SupplierReturns(db){
         EXECUTE format('ALTER TABLE business_documents DROP CONSTRAINT %I',item.conname);
       END LOOP;
     END $$;
-    ALTER TABLE business_documents ADD CONSTRAINT business_documents_doc_type_check CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE'));
+    ALTER TABLE business_documents ADD CONSTRAINT business_documents_doc_type_check CHECK (doc_type IN ('PURCHASE_RFQ','PURCHASE_ORDER','PURCHASE_RECEIPT','PURCHASE_INVOICE','SUPPLIER_RETURN','PURCHASE_RETURN','SALES_QUOTE','SALES_ORDER','DELIVERY_NOTE','SALES_INVOICE','SALES_RETURN'));
     CREATE INDEX IF NOT EXISTS idx_supplier_returns_source ON business_documents(tenant_id,source_document_id) WHERE doc_type='SUPPLIER_RETURN';
   `);
   await db.query(`UPDATE business_documents d SET remaining_amount=GREATEST(d.total_amount-d.paid_amount-COALESCE((SELECT SUM(r.total_amount) FROM business_documents r WHERE r.tenant_id=d.tenant_id AND r.source_document_id=d.id AND r.doc_type='SUPPLIER_RETURN' AND r.status='CONFIRMED'),0),0) WHERE d.doc_type='PURCHASE_INVOICE'`);

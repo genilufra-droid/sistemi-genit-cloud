@@ -10,9 +10,11 @@
     "build": "node scripts/railway-build.cjs",
     "start": "node scripts/railway-start.cjs",
     "install:all": "npm install --workspace apps/api && npm install --workspace apps/web",
-    "check": "npm run check --workspace apps/api && npm run build --workspace apps/web",
+    "check": "npm run check --workspace apps/api && npm run build --workspace apps/web && node tests/deployment-contract.mjs && node tests/ui-document-contract.mjs && node tests/electronic-archive-contract.mjs",
     "test:critical-flow": "node tests/critical-business-flow.mjs",
+    "test:supplier-return": "node tests/supplier-return-flow.mjs",
     "test:ui-contract": "npm run build && node tests/ui-document-contract.mjs",
+    "test:deployment": "node tests/deployment-contract.mjs",
     "test:electronic-archive": "node tests/electronic-archive-contract.mjs"
   }
 }

@@ -53,6 +53,7 @@ const PATCHES = [
   'patch-phase94-partner-id-resolution.cjs',
   'patch-phase95-combo-selection-commit.cjs',
   'patch-phase96-document-fidelity.cjs',
+  'patch-phase97-cloud-returns.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -87,6 +88,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
   'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
   'SG_PHASE96_DOCUMENT_FIDELITY_START',
+  'SG_PHASE97_CLOUD_RETURNS_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -191,6 +193,7 @@ try {
     'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
     'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
     'SG_PHASE96_DOCUMENT_FIDELITY_START',
+    'SG_PHASE97_CLOUD_RETURNS_START',
   ];
   for (let i = 1; i < finalPhases.length; i += 1) {
     if (html.lastIndexOf(finalPhases[i]) < html.lastIndexOf(finalPhases[i - 1])) {
