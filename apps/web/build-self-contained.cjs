@@ -3,7 +3,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const zlib = require('node:zlib');
+const { execFileSync } = require('node:child_process');
 
 const WEB_ROOT = __dirname;
 const BUILD_SCRIPTS = path.join(WEB_ROOT, 'build-scripts');
@@ -53,7 +54,6 @@ const PATCHES = [
   'patch-phase94-partner-id-resolution.cjs',
   'patch-phase95-combo-selection-commit.cjs',
   'patch-phase96-document-fidelity.cjs',
-  'patch-phase97-cloud-returns.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -88,7 +88,6 @@ const REQUIRED_MARKERS = [
   'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
   'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
   'SG_PHASE96_DOCUMENT_FIDELITY_START',
-  'SG_PHASE97_CLOUD_RETURNS_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -109,20 +108,19 @@ function restorePackedHtmlIfPresent(webRoot) {
   const partsDir = path.join(webRoot, 'html-source-parts');
   if (!fs.existsSync(partsDir)) return false;
   const parts = fs.readdirSync(partsDir)
-    .filter((name) => /^xz-\d+\.b64$/.test(name))
+    .filter((name) => /^br-\d+\.b64$/.test(name))
     .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
   if (!parts.length) return false;
 
   const base64 = parts.map((name) => fs.readFileSync(path.join(partsDir, name), 'utf8')).join('').replace(/\s+/g, '');
-  const packedPath = path.join(webRoot, '.source-index.xz');
-  fs.writeFileSync(packedPath, Buffer.from(base64, 'base64'));
-  const result = spawnSync('xz', ['-dc', packedPath], { encoding: null, maxBuffer: 128 * 1024 * 1024 });
-  fs.rmSync(packedPath, { force: true });
-  if (result.error) throw new Error(`Nuk u hap burimi i paketuar: ${result.error.message}`);
-  if (result.status !== 0 || !result.stdout || result.stdout.length < 1_000_000) {
-    throw new Error(`Burimi i paketuar HTML është i pavlefshëm: ${String(result.stderr || '')}`);
+  let html;
+  try {
+    html = zlib.brotliDecompressSync(Buffer.from(base64, 'base64'));
+  } catch (error) {
+    throw new Error(`Nuk u hap burimi i paketuar: ${error.message}`);
   }
-  fs.writeFileSync(path.join(webRoot, 'index.html'), result.stdout);
+  if (!html || html.length < 1_000_000) throw new Error('Burimi i paketuar HTML është i pavlefshëm.');
+  fs.writeFileSync(path.join(webRoot, 'index.html'), html);
   console.log(`Burimi web u rikthye nga ${parts.length} pjesë të paketimit.`);
   return true;
 }
@@ -193,7 +191,6 @@ try {
     'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
     'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
     'SG_PHASE96_DOCUMENT_FIDELITY_START',
-    'SG_PHASE97_CLOUD_RETURNS_START',
   ];
   for (let i = 1; i < finalPhases.length; i += 1) {
     if (html.lastIndexOf(finalPhases[i]) < html.lastIndexOf(finalPhases[i - 1])) {
