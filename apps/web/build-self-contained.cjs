@@ -58,6 +58,8 @@ const PATCHES = [
   'patch-phase97-cloud-returns.cjs',
   // Must run after all views: remove non-operational explanatory screen copy.
   'patch-phase99-professional-screen-copy.cjs',
+  // Last: make payment allocation explicit to one invoice after every legacy view is ready.
+  'patch-phase100-purchase-audit-fixes.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -94,6 +96,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE96_DOCUMENT_FIDELITY_START',
   'SG_PHASE97_CLOUD_RETURNS_START',
   'SG_PHASE99_PROFESSIONAL_SCREEN_COPY_START',
+  'SG_PHASE100_PURCHASE_AUDIT_FIXES_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -186,6 +189,8 @@ try {
     'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
     'SG_PHASE96_DOCUMENT_FIDELITY_START',
     'SG_PHASE97_CLOUD_RETURNS_START',
+    'SG_PHASE99_PROFESSIONAL_SCREEN_COPY_START',
+    'SG_PHASE100_PURCHASE_AUDIT_FIXES_START',
   ];
   for (let i = 1; i < finalPhases.length; i += 1) {
     if (html.lastIndexOf(finalPhases[i]) < html.lastIndexOf(finalPhases[i - 1])) {

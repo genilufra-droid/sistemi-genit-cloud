@@ -540,6 +540,7 @@
   App.payPartner = async function (partnerId, isCustomer) {
     var amountInput = document.getElementById('pay-amount');
     var methodInput = document.getElementById('pay-method');
+    var invoiceInput = document.getElementById('pay-invoice');
     var submit = document.getElementById('pay-submit');
     var amount = num(amountInput && amountInput.value);
     var method = String((global.SearchableCombo && global.SearchableCombo.getSelectedId &&
@@ -561,20 +562,20 @@
       this.toast('Nuk ka detyrim të hapur.', 'error');
       return;
     }
-    var openTotal = openCharges.reduce(function (sum,entry) { return sum + num(entry.balance); },0);
-    if (amount > openTotal + 0.005) {
-      this.toast('Pagesa tejkalon shumën totale të mbetur: ' + openTotal.toLocaleString('sq-AL'), 'error');
+    var selectedInvoiceId = String((invoiceInput && invoiceInput.value) || '');
+    var charge = selectedInvoiceId ? openCharges.find(function (entry) {
+      return String(entry.invoiceId) === selectedInvoiceId;
+    }) : (openCharges.length === 1 ? openCharges[0] : null);
+    if (!charge) {
+      this.toast('Zgjidh faturën që do të paguhet.', 'error');
       return;
     }
-    var remainingToAllocate = amount;
-    var allocations = [];
-    openCharges.forEach(function (entry) {
-      if (remainingToAllocate <= 0.005) return;
-      var allocated = Math.min(num(entry.balance),remainingToAllocate);
-      allocations.push({businessDocumentId:entry.invoiceId,amount:allocated});
-      remainingToAllocate -= allocated;
-    });
-    var charge = openCharges[0];
+    var remainingBalance = num(charge.balance);
+    if (amount > remainingBalance + 0.005) {
+      this.toast('Pagesa tejkalon shumën e mbetur të faturës ' + (charge.docNumber || '') + ': ' + remainingBalance.toLocaleString('sq-AL'), 'error');
+      return;
+    }
+    var allocations = [{businessDocumentId:charge.invoiceId,amount:amount}];
     try {
       if (submit) submit.disabled = true;
       var accountKind = method === 'cash' ? 'CASH' : 'BANK';
