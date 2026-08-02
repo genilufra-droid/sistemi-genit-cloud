@@ -243,14 +243,14 @@
     if (!tab) return App.sg80ShowModule();
     ui.content.style.display = 'none';
     ui.stage.style.display = 'block';
-    ui.stage.innerHTML = '<div class="sg80-toolbar"><div><h2>'+esc(tab.title)+'</h2><small>'+esc(tab.subtitle || 'Dokument i hapur në hapësirën e punës')+'</small></div><div class="sg80-actions">'+
+    ui.stage.innerHTML = '<div class="sg80-toolbar"><div><h2>'+esc(tab.title)+'</h2></div><div class="sg80-actions">'+
       (tab.editAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'edit\')">✏️ Edito</button>' : '')+
       (tab.flowAction ? '<button class="sg80-btn primary" data-document-flow onclick="App.sg80RunActive(\'flow\',this)">'+esc(tab.flowLabel || 'Vazhdo')+'</button>' : '')+
+      (!tab.flowAction && tab.flowDoneLabel ? '<span class="sg80-flow-done">'+esc(tab.flowDoneLabel)+'</span>' : '')+
       (tab.deleteAction ? '<button class="sg80-btn danger" onclick="App.sg80RunActive(\'delete\')">🗑 Fshi Draft</button>' : '')+
       '<button class="sg80-btn" onclick="App.sg80RunActive(\'print\')">🖨 Print</button>'+
       (tab.pdfAction ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'pdf\')">📄 PDF</button>' : '')+
       (tab.excelAction || tab.excelRows ? '<button class="sg80-btn" onclick="App.sg80RunActive(\'excel\')">📊 Excel</button>' : '')+
-      '<button class="sg80-btn" onclick="App.sg80OpenHelp()">? Ndihmë</button>'+
       '<button class="sg80-btn danger" onclick="App.sg80CloseTab(\''+attr(tab.key)+'\')">Mbyll</button></div></div>'+tab.html;
     setHeading(tab.title);
     renderTabs();
@@ -476,13 +476,18 @@
     } : null;
     var flowTarget = type === 'PURCHASE_ORDER' ? 'PURCHASE_RECEIPT' : type === 'PURCHASE_RECEIPT' ? 'PURCHASE_INVOICE' : null;
     var flowLabel = type === 'PURCHASE_ORDER' ? '📥 Krijo Pranim' : type === 'PURCHASE_RECEIPT' ? '🧾 Krijo Faturë' : '';
-    var flowFn = flowTarget ? async function () {
+    var linkedDocuments = doc.linked_documents || doc.linkedDocuments || [];
+    var alreadyConverted = linkedDocuments.some(function (row) {
+      return String(row.doc_type || row.docType || '').toUpperCase() === flowTarget;
+    });
+    var flowDoneLabel = alreadyConverted ? (type === 'PURCHASE_ORDER' ? '✓ Pranimi u krijua' : '✓ Fatura u krijua') : '';
+    var flowFn = flowTarget && !alreadyConverted ? async function () {
       if (typeof App.sg95ConvertCloudTarget !== 'function') return App.toast('Veprimi i dokumentit nuk është ngarkuar.', 'error');
       var created = await App.sg95ConvertCloudTarget(id,type,flowTarget,true);
       if (created) App.sg80CloseTab('business:'+id);
       return created;
     } : null;
-    openTab({ key:'business:'+id, title:title, subtitle:'Dokumenti real A4 — Print, PDF dhe Excel nga të njëjtat të dhëna', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, flowAction:flowFn, flowLabel:flowLabel, deleteAction:deleteFn });
+    openTab({ key:'business:'+id, title:title, subtitle:'', icon:/INVOICE/.test(type)?'🧾':/RECEIPT|DELIVERY/.test(type)?'📦':'📄', html:html, printAction:function(){printHtml(title,html);}, pdfAction:function(){exportBusinessPdf(doc,company,partner,title);}, excelAction:function(){exportBusinessExcel(doc,company,partner,title);}, editAction:editFn, flowAction:flowFn, flowLabel:flowLabel, flowDoneLabel:flowDoneLabel, deleteAction:deleteFn });
     return doc;
   }
 
@@ -560,15 +565,10 @@
   };
 
   function ensureHelpButton() {
-    var top = document.querySelector('.topbar');
-    if (!top || document.getElementById('sg80-help-button')) return;
-    var button = document.createElement('button');
-    button.id = 'sg80-help-button';
-    button.className = 'sg80-help-button no-print';
-    button.type = 'button';
-    button.innerHTML = '? <span>Ndihmë</span>';
-    button.addEventListener('click', function(){ App.sg80OpenHelp(); });
-    top.appendChild(button);
+    /* The work area must stay operational: no persistent tutorial controls.
+       Help remains available from the normal help entry, not in every view. */
+    var old = document.getElementById('sg80-help-button');
+    if (old) old.remove();
   }
 
   function wrapFunctions() {
