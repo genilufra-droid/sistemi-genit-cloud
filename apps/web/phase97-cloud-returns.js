@@ -1,11 +1,21 @@
 /* SG_PHASE97_CLOUD_RETURNS_START — real, partial supplier-return workflow */
 (function (global) {
   'use strict';
+  /* `App` and `CloudERP` are declared with lexical bindings by the packed
+     application, so they are not guaranteed to exist on window.  Resolve
+     them the same way as the direct document layer does. */
+  var App = null;
+  var Cloud = null;
+  function resolve(name) {
+    try { if (global[name]) return global[name]; } catch (_ignore) {}
+    try { return global.eval('typeof ' + name + ' !== "undefined" ? ' + name + ' : null'); } catch (_ignore2) {}
+    return null;
+  }
   function install() {
     if (global.__SG_PHASE97_CLOUD_RETURNS__) return true;
 
-    var App = global.App;
-    var Cloud = global.CloudERP;
+    App = App || resolve('App');
+    Cloud = Cloud || resolve('CloudERP');
     // The cloud adapter may load after this self-contained script. Mark the
     // workflow installed only after its real API bridge is available.
     if (Cloud && Cloud.offlineTestMode) return true;
