@@ -21,6 +21,9 @@
       '#content .info-banner,',
       '#content .sg-odoo-info,',
       '#content .sg-odoo-guide { display:none !important; }'
+      ,'#sg80-help-button,',
+      '.sg80-toolbar [onclick*="sg80OpenHelp"],',
+      '.sg80-toolbar > div:first-child > small { display:none !important; }'
     ].join('');
     document.head.appendChild(style);
 
