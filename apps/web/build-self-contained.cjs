@@ -54,6 +54,8 @@ const PATCHES = [
   'patch-phase94-partner-id-resolution.cjs',
   'patch-phase95-combo-selection-commit.cjs',
   'patch-phase96-document-fidelity.cjs',
+  // Must run last: it binds the live supplier-return screen after legacy views.
+  'patch-phase97-cloud-returns.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -88,6 +90,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
   'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
   'SG_PHASE96_DOCUMENT_FIDELITY_START',
+  'SG_PHASE97_CLOUD_RETURNS_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
@@ -125,84 +128,3 @@ function restorePackedHtmlIfPresent(webRoot) {
   return true;
 }
 
-if (!fs.existsSync(BUILD_SCRIPTS)) {
-  throw new Error('Mungon apps/web/build-scripts. Build-i nuk mund të vazhdojë.');
-}
-
-const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sistemi-genit-web-'));
-const temporaryWeb = path.join(temporaryRoot, 'apps', 'web');
-const temporaryScripts = path.join(temporaryRoot, 'scripts');
-
-try {
-  fs.mkdirSync(path.dirname(temporaryWeb), { recursive: true });
-  copyWebSource(WEB_ROOT, temporaryWeb);
-  restorePackedHtmlIfPresent(temporaryWeb);
-  fs.cpSync(BUILD_SCRIPTS, temporaryScripts, { recursive: true });
-
-  for (const patch of PATCHES) {
-    const patchPath = path.join(temporaryScripts, patch);
-    if (!fs.existsSync(patchPath)) throw new Error(`Mungon build script: ${patch}`);
-    execFileSync(process.execPath, [patchPath], {
-      cwd: temporaryWeb,
-      env: process.env,
-      stdio: 'inherit',
-    });
-  }
-
-  const builtIndex = path.join(temporaryWeb, 'index.html');
-  if (!fs.existsSync(builtIndex) || fs.statSync(builtIndex).size === 0) {
-    throw new Error('Build-i nuk prodhoi index.html.');
-  }
-
-  let html = fs.readFileSync(builtIndex, 'utf8');
-  // Several legacy phase patchers append scripts after the original closing
-  // tags. Normalize the generated artifact so it remains a valid, repeatable
-  // build input on the next Railway deployment.
-  html = html
-    .replace(/^\s*<\/body>\s*$/gim, '')
-    .replace(/^\s*<\/html>\s*$/gim, '')
-    .trimEnd() + '\n</body>\n</html>\n';
-  fs.writeFileSync(builtIndex, html);
-  for (const marker of REQUIRED_MARKERS) {
-    if (!html.includes(marker)) throw new Error(`Build-i final nuk përmban ${marker}.`);
-  }
-  if (html.lastIndexOf('SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START') < html.lastIndexOf('SG_PHASE75_ODOO_INVENTORY_UI_START')) {
-    throw new Error('Phase 7.6 duhet të jetë pas Inventory 7.5.');
-  }
-  if (html.lastIndexOf('SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START') < html.lastIndexOf('SG_PHASE76_INVENTORY_DOCUMENTS_REPORTS_UI_START')) {
-    throw new Error('Phase 8.0 duhet të jetë pas dokumenteve Inventory 7.6.');
-  }
-  if (html.lastIndexOf('SG_PHASE81_SAMPLE_SEARCH_CREATE_START') < html.lastIndexOf('SG_PHASE80_DOCUMENT_WORKSPACE_HELP_START')) {
-    throw new Error('Phase 8.1 duhet të jetë pas dokumenteve dhe Help-it 8.0.');
-  }
-  if (html.lastIndexOf('SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START') < html.lastIndexOf('SG_PHASE81_SAMPLE_SEARCH_CREATE_START')) {
-    throw new Error('Phase 8.2 duhet të jetë pas Phase 8.1.');
-  }
-  const finalPhases = [
-    'SG_PHASE82_GLOBAL_SEARCH_DOCUMENT_ACTIONS_START',
-    'SG_PHASE83_REAL_DOCUMENT_LINKS_START',
-    'SG_PHASE85_PROFESSIONAL_DOCUMENT_TEMPLATES_START',
-    'SG_PHASE86_EXACT_DOCUMENT_LAYOUTS_START',
-    'SG_PHASE87_DIRECT_REAL_DOCUMENT_TAB_START',
-    'SG_PHASE88_DIRECT_DOCUMENT_RENDERER_START',
-    'SG_PHASE89_CLEAN_DOCUMENT_TAB_START',
-    'SG_PHASE91_PROFESSIONAL_DOCUMENTS_START',
-    'SG_PHASE92_UNIVERSAL_ACTIONS_START',
-    'SG_PHASE94_PARTNER_ID_RESOLUTION_START',
-    'SG_PHASE95_COMBO_SELECTION_COMMIT_START',
-    'SG_PHASE96_DOCUMENT_FIDELITY_START',
-  ];
-  for (let i = 1; i < finalPhases.length; i += 1) {
-    if (html.lastIndexOf(finalPhases[i]) < html.lastIndexOf(finalPhases[i - 1])) {
-      throw new Error(`${finalPhases[i]} duhet të jetë pas ${finalPhases[i - 1]}.`);
-    }
-  }
-
-  fs.copyFileSync(builtIndex, SOURCE_INDEX);
-  fs.rmSync(DIST_DIR, { recursive: true, force: true });
-  fs.mkdirSync(DIST_DIR, { recursive: true });
-  fs.copyFileSync(SOURCE_INDEX, path.join(DIST_DIR, 'index.html'));
-  console.log(`Sistemi Genit web build completed: ${path.join(DIST_DIR, 'index.html')}`);
-} finally {
-  fs.rmSync(temporaryRoot, { recursive: true, force: true });
-}
