@@ -2,16 +2,23 @@
 (function (global) {
   'use strict';
   if (global.__SG_PHASE96_DOCUMENT_FIDELITY__) return;
-  global.__SG_PHASE96_DOCUMENT_FIDELITY__ = true;
-
-  var App = global.App;
-  var Cloud = global.CloudERP;
+  /* This file is injected after the legacy bundle.  On slower mobile
+     browsers that bundle can still be initializing when this script runs.
+     Do not mark the phase as installed until its real globals exist: an
+     early marker previously left the old workspace renderer in control. */
+  function resolve(name) {
+    try { if (global[name]) return global[name]; } catch (_ignore) {}
+    try { return global.eval('typeof ' + name + ' !== "undefined" ? ' + name + ' : null'); } catch (_ignore2) {}
+    return null;
+  }
+  var App = resolve('App');
+  var Cloud = resolve('CloudERP');
   /* Keep export engines by reference.  The clean A4 view replaces the SPA
      body and some legacy modules subsequently clean window globals; retaining
      these references makes PDF/XLSX exports independent of that cleanup. */
-  var PdfEngine = global.PDFEngine;
-  var XlsxEngine = global.XLSX;
-  var DesktopEngine = global.DesktopIO;
+  var PdfEngine = resolve('PDFEngine');
+  var XlsxEngine = resolve('XLSX');
+  var DesktopEngine = resolve('DesktopIO');
   var query = new URLSearchParams(global.location.search);
   var documentId = query.get('sgdocId');
   var documentKind = query.get('sgdocKind') || 'business_document';
@@ -75,7 +82,9 @@
   }
 
   function excel() {
-    if(!current||!XlsxEngine)return alert('Motori Excel nuk është i disponueshëm.');
+    XlsxEngine=XlsxEngine||resolve('XLSX');
+    DesktopEngine=DesktopEngine||resolve('DesktopIO');
+    if(!current||!XlsxEngine)return alert('Motori Excel nuk është i disponueshëm. Rifresko dokumentin dhe provo përsëri.');
     var title=typeLabel(current.docType)+' '+current.documentNo;
     var isMovement=current.docType==='PURCHASE_RECEIPT'||current.docType==='SUPPLIER_RETURN'||current.docType==='PURCHASE_RETURN'||current.docType==='DELIVERY_NOTE'||current.docType==='SALES_RETURN';
     var isFinance=/^(CASH|BANK)_(RECEIPT|PAYMENT)$/.test(String(current.docType||''));
@@ -131,9 +140,11 @@
        DesktopEngine.saveBinary(doc.output('arraybuffer'),filename,'application/pdf')
        is retained only as a UI-contract compatibility marker; it is not used
        by cloud document export. */
+    var cloud=Cloud||resolve('CloudERP');
+    if(!cloud||!cloud.apiUrl)throw new Error('Lidhja cloud nuk është gati për PDF. Rifresko dokumentin dhe provo përsëri.');
     var token='';try{token=global.localStorage.getItem('sg_cloud_access_token_v1')||'';}catch(_e){}
     var path=documentKind==='finance_document'?'/api/finance/documents/':'/api/documents/';
-    var response=await global.fetch(global.CloudERP.apiUrl+path+encodeURIComponent(documentId)+'/pdf',{headers:token?{Authorization:'Bearer '+token}:{}});
+    var response=await global.fetch(cloud.apiUrl+path+encodeURIComponent(documentId)+'/pdf',{headers:token?{Authorization:'Bearer '+token}:{}});
     if(response.ok){
       var blob=await response.blob(),url=global.URL.createObjectURL(blob),filename=safe(typeLabel(current.docType)+'_'+current.documentNo)+'.pdf';
       if(openForPrint){
@@ -177,32 +188,32 @@
     document.querySelectorAll('.sg96-doc table tr').forEach(function(row){Array.prototype.slice.call(row.children).forEach(function(cell){if(/^veprime$/i.test(cell.textContent.trim())||cell.querySelector('button'))cell.remove();});});
   }
   async function boot() {
-    var attempts=0;while((!global.CloudERP||typeof global.CloudERP.request!=='function')&&attempts++<100)await new Promise(function(ok){setTimeout(ok,50);});
-    if(!global.CloudERP||typeof global.CloudERP.request!=='function')throw new Error('Lidhja cloud nuk u inicializua.');
+    var attempts=0;while((!(Cloud=Cloud||resolve('CloudERP'))||typeof Cloud.request!=='function')&&attempts++<100)await new Promise(function(ok){setTimeout(ok,50);});
+    if(!Cloud||typeof Cloud.request!=='function')throw new Error('Lidhja cloud nuk u inicializua.');
     var bodyHtml='';
     if(documentKind==='weight_ticket'){
-      current=camel(await global.CloudERP.request('/api/trace/workflow/weights/'+encodeURIComponent(documentId)+'/details'));
+      current=camel(await Cloud.request('/api/trace/workflow/weights/'+encodeURIComponent(documentId)+'/details'));
       current.docType='WEIGHT_TICKET';current.documentNo=current.documentNo||current.document_no;current.documentDate=current.documentDate||current.document_date;current.partnerName=current.supplierName;current.totalAmount=current.totalValue;
       current.items=[{description:current.productName||'Peshë',unit:'kg',quantity:current.acceptedWeight,unitPrice:current.unitPrice,lineTotal:current.totalValue}];
       if(current.receiptDocumentId){
-        var weightTrace=await global.CloudERP.request('/api/documents/'+encodeURIComponent(current.receiptDocumentId)+'/trace');
+        var weightTrace=await Cloud.request('/api/documents/'+encodeURIComponent(current.receiptDocumentId)+'/trace');
         current.traceNodes=(weightTrace.nodes||[]).map(camel);
       }
       bodyHtml=weight(current);
     }else if(documentKind==='finance_document'){
-      current=camel(await global.CloudERP.request('/api/finance/documents/'+encodeURIComponent(documentId)));
+      current=camel(await Cloud.request('/api/finance/documents/'+encodeURIComponent(documentId)));
       current.docType=current.documentType;current.totalAmount=current.amount;current.allocations=(current.allocations||[]).map(camel);
       current.items=current.allocations.map(function(x){return{description:x.documentNo,unit:'',quantity:1,unitPrice:x.amount,lineTotal:x.amount};});
       var allocatedDocument=current.allocations.find(function(x){return x.businessDocumentId;});
       if(allocatedDocument){
-        var financeTrace=await global.CloudERP.request('/api/documents/'+encodeURIComponent(allocatedDocument.businessDocumentId)+'/trace');
+        var financeTrace=await Cloud.request('/api/documents/'+encodeURIComponent(allocatedDocument.businessDocumentId)+'/trace');
         current.traceNodes=(financeTrace.nodes||[]).map(camel);
       }
       bodyHtml=finance(current);
     }else{
-      current=camel(await global.CloudERP.request('/api/documents/'+encodeURIComponent(documentId)));
+      current=camel(await Cloud.request('/api/documents/'+encodeURIComponent(documentId)));
       current.linkedDocuments=(current.linkedDocuments||[]).map(camel);
-      var trace=await global.CloudERP.request('/api/documents/'+encodeURIComponent(documentId)+'/trace');
+      var trace=await Cloud.request('/api/documents/'+encodeURIComponent(documentId)+'/trace');
       current.traceNodes=(trace.nodes||[]).map(camel);bodyHtml=documentHtml(current);
     }
     styles();documentStyleRefinement();exactReferenceStyles();document.body.innerHTML='<div class="sg96-tools"><button data-back>Kthehu</button><button data-print>Print</button><button data-pdf>PDF</button><button data-excel>Excel</button></div><main class="sg96-doc">'+bodyHtml+'</main>';removeLegacyTableActions();global.setTimeout(removeLegacyTableActions,50);
@@ -214,7 +225,13 @@
   }
 
   function install() {
-    if(!App)return;
+    App=App||resolve('App');
+    Cloud=Cloud||resolve('CloudERP');
+    XlsxEngine=XlsxEngine||resolve('XLSX');
+    DesktopEngine=DesktopEngine||resolve('DesktopIO');
+    if(!App||!Cloud)return false;
+    if(global.__SG_PHASE96_DOCUMENT_FIDELITY__)return true;
+    global.__SG_PHASE96_DOCUMENT_FIDELITY__=true;
     App.sg96OpenDocument=openDocument;
     App.sg96OpenDocumentAction=openDocumentAction;
     var original=App.sg72OpenDocument;
@@ -223,10 +240,13 @@
       'openPurchaseInvoice','openSalesInvoice','openSaleInvoice','openPurchaseReceipt','openDeliveryNote',
       'openPurchaseOrder','openSalesOrder','openPurchaseRFQ','openSalesQuotation','openSalesQuote'
     ].forEach(function(method){
-      if(typeof App[method]!=='function')return;
-      App[method]=function(id){if(id){openDocument(id,'business_document');return;}};
+      var legacy=App[method];
+      App[method]=function(id){if(id){openDocument(id,'business_document');return;}return typeof legacy==='function'?legacy.apply(this,arguments):null;};
     });
-    App.openFinanceDocument=function(id){if(id){openDocument(id,'finance_document');}};
+    var legacyOdoo=App.openOdooDocument;
+    App.openOdooDocument=function(type,id){if(id){openDocument(id,'business_document');return;}return typeof legacyOdoo==='function'?legacyOdoo.apply(this,arguments):null;};
+    var legacyFinance=App.openFinanceDocument;
+    App.openFinanceDocument=function(id){if(id){openDocument(id,'finance_document');return;}return typeof legacyFinance==='function'?legacyFinance.apply(this,arguments):null;};
     App.printFinanceDocument=function(id){openDocumentAction(id,'finance_document','print');};
     App.exportFinanceDocumentPDF=function(id){openDocumentAction(id,'finance_document','pdf');};
     App.exportFinanceDocumentExcel=function(id){openDocumentAction(id,'finance_document','excel');};
@@ -235,12 +255,14 @@
       var row=event.target&&event.target.closest&&event.target.closest('tr[onclick]');
       if(!row)return;
       var source=row.getAttribute('onclick')||'';
-      var match=source.match(/App\.(?:openPurchaseInvoice|openSalesInvoice|openSaleInvoice|openPurchaseReceipt|openDeliveryNote|openPurchaseOrder|openSalesOrder|openPurchaseRFQ|openSalesQuotation|openSalesQuote)\(['"]([^'"]+)['"]\)/);
+      var match=source.match(/App\.(?:openPurchaseInvoice|openSalesInvoice|openSaleInvoice|openPurchaseReceipt|openDeliveryNote|openPurchaseOrder|openSalesOrder|openPurchaseRFQ|openSalesQuotation|openSalesQuote)\(['"]([^'"]+)['"]\)/) || source.match(/App\.openOdooDocument\(\s*['"][^'"]+['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
       if(!match)return;
       event.preventDefault();event.stopImmediatePropagation();openDocument(match[1],'business_document');
     },true);
+    return true;
   }
-  install();
+  function installWhenReady(){if(!install())global.setTimeout(installWhenReady,50);}
+  installWhenReady();
   /*
    * Do not replace body while the single-page app is still parsing its own
    * scripts.  That used to remove the bundled XLSX/PDF engines and caused the
