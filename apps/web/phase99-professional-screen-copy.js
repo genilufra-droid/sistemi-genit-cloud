@@ -2,9 +2,15 @@
 (function (global) {
   'use strict';
 
+  function resolveApp() {
+    try { if (global.App) return global.App; } catch (_ignore) {}
+    try { return global.eval('typeof App !== "undefined" ? App : null'); } catch (_ignore2) {}
+    return null;
+  }
+
   function install() {
     if (global.__SG_PHASE99_PROFESSIONAL_SCREEN_COPY__) return true;
-    var App = global.App;
+    var App = resolveApp();
     if (!App) return false;
     global.__SG_PHASE99_PROFESSIONAL_SCREEN_COPY__ = true;
 
