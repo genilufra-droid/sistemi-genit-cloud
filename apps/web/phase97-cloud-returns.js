@@ -164,7 +164,8 @@
       this.toast(error.message || String(error), 'error');
     }
   };
-  App.view_purchaseReturns = async function () {
+  function bindPurchaseReturnView() {
+    App.view_purchaseReturns = async function () {
     await refreshDataWithoutNavigation();
     var rows = (this.data.purchaseReturns || []).concat(this.data.supplierReturns || []).slice().sort(function (a, b) {
       return String(b.documentDate || b.date || b.createdAt || '').localeCompare(String(a.documentDate || a.date || a.createdAt || ''));
@@ -187,7 +188,17 @@
     var title = document.getElementById('page-title');
     if (title) title.textContent = 'Kthime te Furnitori';
     content.innerHTML = '<div class="card"><div class="card-title"><div><h3>Kthime te Furnitori</h3><p class="muted">Kthim nga faturë ul stokun dhe detyrimin. Kthimi nga pranimi prek vetëm stokun.</p></div><div class="card-title-actions"><button type="button" class="btn btn-primary btn-sm" onclick="App.sg97NewFinancialSupplierReturn()">+ Kthim nga Fatura</button></div></div><div class="table-wrap"><table><thead><tr><th>Nr. dokumenti</th><th>Lloji</th><th>Data</th><th>Furnitori</th><th>Totali</th><th>Statusi</th><th>Veprime</th></tr></thead><tbody>'+ (body || '<tr><td colspan="7" class="muted">Nuk ka kthime të regjistruara.</td></tr>') +'</tbody></table></div></div>';
-  };
+    };
+  }
+  bindPurchaseReturnView();
+  // The legacy financial-return script rebinds this view on `window.load`.
+  // Registering this listener after it makes the unified cloud workflow final.
+  function bindAfterLegacyViews() { bindPurchaseReturnView(); }
+  if (document.readyState === 'loading') {
+    global.addEventListener('load', function () { global.setTimeout(bindAfterLegacyViews, 0); }, { once: true });
+  } else {
+    global.setTimeout(bindAfterLegacyViews, 0);
+  }
 
   var previousList = typeof App._viewOdooList === 'function' ? App._viewOdooList : null;
   App._viewOdooList = async function (type) {
