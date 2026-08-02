@@ -1,12 +1,16 @@
 /* SG_PHASE97_CLOUD_RETURNS_START — real, partial supplier-return workflow */
 (function (global) {
   'use strict';
-  if (global.__SG_PHASE97_CLOUD_RETURNS__) return;
-  global.__SG_PHASE97_CLOUD_RETURNS__ = true;
+  function install() {
+    if (global.__SG_PHASE97_CLOUD_RETURNS__) return true;
 
-  var App = global.App;
-  var Cloud = global.CloudERP;
-  if (!App || !Cloud || !Cloud.apiUrl || Cloud.offlineTestMode || typeof Cloud.request !== 'function') return;
+    var App = global.App;
+    var Cloud = global.CloudERP;
+    // The cloud adapter may load after this self-contained script. Mark the
+    // workflow installed only after its real API bridge is available.
+    if (Cloud && Cloud.offlineTestMode) return true;
+    if (!App || !Cloud || !Cloud.apiUrl || typeof Cloud.request !== 'function') return false;
+    global.__SG_PHASE97_CLOUD_RETURNS__ = true;
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
@@ -192,5 +196,12 @@
     return result;
   };
   global.SGPhase97 = { createSupplierReturn: App.sg97CreateSupplierReturn, submitSupplierReturn: App.sg97SubmitSupplierReturn };
+    return true;
+  }
+
+  function boot() {
+    if (!install()) global.setTimeout(boot, 250);
+  }
+  boot();
 })(window);
 /* SG_PHASE97_CLOUD_RETURNS_END */
