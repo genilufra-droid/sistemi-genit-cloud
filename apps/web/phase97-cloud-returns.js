@@ -128,7 +128,20 @@
       this.toast(error.message || String(error), 'error');
     }
   };
+  function findReturn(id) {
+    return (App.data.supplierReturns || []).concat(App.data.purchaseReturns || []).find(function (doc) {
+      return doc && String(doc.id) === String(id);
+    }) || null;
+  }
+  App.sg97NewFinancialSupplierReturn = function () {
+    if (typeof this.sg98NewSupplierReturn === 'function') return this.sg98NewSupplierReturn();
+    this.toast('Kthimi financiar nuk është ngarkuar ende. Rifreskoni faqen dhe provoni përsëri.', 'error');
+  };
   App.sg97OpenSupplierReturn = function (id) {
+    var doc = findReturn(id);
+    if (doc && doc.docType === 'SUPPLIER_RETURN' && typeof this.sg98OpenSupplierReturn === 'function') {
+      return this.sg98OpenSupplierReturn(id);
+    }
     if (id && typeof this.sg96OpenDocument === 'function') return this.sg96OpenDocument(id, 'business_document');
   };
   App.sg97ReturnAction = function (id, action) {
@@ -136,6 +149,9 @@
   };
   App.sg97CancelSupplierReturn = async function (id, docType) {
     try {
+      if (docType === 'SUPPLIER_RETURN' && typeof this.sg98CancelSupplierReturn === 'function') {
+        return this.sg98CancelSupplierReturn(id);
+      }
       if (!global.confirm('Anulimi do ta rikthejë sasinë në magazinë. Vazhdoni?')) return;
       var route = docType === 'SUPPLIER_RETURN'
         ? '/api/supplier-returns/'+encodeURIComponent(id)+'/cancel'
@@ -155,18 +171,22 @@
     });
     var body = rows.map(function (doc) {
       var docStatus = status(doc);
+      var financial = doc.docType === 'SUPPLIER_RETURN';
+      var returnKind = financial
+        ? '<span class="status confirmed">FINANCIAR · STOK + DETYRIM</span>'
+        : '<span class="status draft">NGA PRANIMI · VETËM STOK</span>';
       var actions = '<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97OpenSupplierReturn(\''+esc(doc.id)+'\')">Hap</button>'
         +'<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97ReturnAction(\''+esc(doc.id)+'\',\'print\')">Print</button>'
         +'<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97ReturnAction(\''+esc(doc.id)+'\',\'pdf\')">PDF</button>'
         +'<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97ReturnAction(\''+esc(doc.id)+'\',\'excel\')">Excel</button>';
       if (docStatus !== 'CANCELLED') actions += '<button type="button" class="btn btn-red btn-sm" onclick="App.sg97CancelSupplierReturn(\''+esc(doc.id)+'\',\''+esc(doc.docType)+'\')">Anullo</button>';
-      return '<tr><td>'+esc(documentNo(doc))+'</td><td>'+esc(date(doc.documentDate || doc.date))+'</td><td>'+esc(doc.partnerName || doc.supplierName || '—')+'</td><td>'+money(doc.totalAmount || doc.total || 0)+' ALL</td><td><span class="status '+esc(docStatus.toLowerCase())+'">'+esc(docStatus === 'CONFIRMED' ? 'POSTUAR' : docStatus)+'</span></td><td>'+actions+'</td></tr>';
+      return '<tr><td>'+esc(documentNo(doc))+'</td><td>'+returnKind+'</td><td>'+esc(date(doc.documentDate || doc.date))+'</td><td>'+esc(doc.partnerName || doc.supplierName || '—')+'</td><td>'+money(doc.totalAmount || doc.total || 0)+' ALL</td><td><span class="status '+esc(docStatus.toLowerCase())+'">'+esc(docStatus === 'CONFIRMED' ? 'POSTUAR' : docStatus)+'</span></td><td>'+actions+'</td></tr>';
     }).join('');
     var content = document.getElementById('content');
     if (!content) return;
     var title = document.getElementById('page-title');
     if (title) title.textContent = 'Kthime te Furnitori';
-    content.innerHTML = '<div class="card"><div class="card-title"><div><h3>Kthime te Furnitori</h3><p class="muted">Kthimet krijohen nga pranimi i postuar; stoku dhe gjurmueshmëria përditësohen menjëherë.</p></div></div><div class="table-wrap"><table><thead><tr><th>Nr. dokumenti</th><th>Data</th><th>Furnitori</th><th>Totali</th><th>Statusi</th><th>Veprime</th></tr></thead><tbody>'+ (body || '<tr><td colspan="6" class="muted">Nuk ka kthime të regjistruara.</td></tr>') +'</tbody></table></div></div>';
+    content.innerHTML = '<div class="card"><div class="card-title"><div><h3>Kthime te Furnitori</h3><p class="muted">Kthim nga faturë ul stokun dhe detyrimin. Kthimi nga pranimi prek vetëm stokun.</p></div><div class="card-title-actions"><button type="button" class="btn btn-primary btn-sm" onclick="App.sg97NewFinancialSupplierReturn()">+ Kthim nga Fatura</button></div></div><div class="table-wrap"><table><thead><tr><th>Nr. dokumenti</th><th>Lloji</th><th>Data</th><th>Furnitori</th><th>Totali</th><th>Statusi</th><th>Veprime</th></tr></thead><tbody>'+ (body || '<tr><td colspan="7" class="muted">Nuk ka kthime të regjistruara.</td></tr>') +'</tbody></table></div></div>';
   };
 
   var previousList = typeof App._viewOdooList === 'function' ? App._viewOdooList : null;
@@ -186,7 +206,7 @@
       if (!hasRemaining) return;
       var button = document.createElement('button');
       button.type = 'button'; button.className = 'btn btn-red btn-sm'; button.dataset.sg97Return = '1';
-      button.textContent = '↩ Kthim';
+      button.textContent = '↩ Kthim stoku';
       button.addEventListener('click', function (event) {
         event.preventDefault(); event.stopPropagation(); App.sg97CreateSupplierReturn(receipt.id);
       });
