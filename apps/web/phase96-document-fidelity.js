@@ -101,6 +101,16 @@
     return '<section class="sg96-paper sg96-mandate-sheet">'+copy()+'<div class="sg96-copy-gap"></div>'+copy()+linkedHtml(doc)+'</section>';
   }
 
+  /* Trigger browser downloads from an attached anchor.  Android Chromium
+     routinely ignores a detached anchor click, which left otherwise valid
+     PDF/XLSX exports looking as though nothing happened. */
+  function downloadBlob(blob,filename) {
+    var url=global.URL.createObjectURL(blob),anchor=document.createElement('a');
+    anchor.href=url;anchor.download=filename;anchor.style.display='none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    global.setTimeout(function(){try{anchor.remove();}catch(_e){}global.URL.revokeObjectURL(url);},120000);
+  }
   function excel() {
     XlsxEngine=XlsxEngine||resolve('XLSX');
     DesktopEngine=DesktopEngine||resolve('DesktopIO');
@@ -146,10 +156,9 @@
     if(headerRow)ws['!autofilter']={ref:'A'+headerRow+':'+XlsxEngine.utils.encode_col(cols.length-1)+headerRow};
     var wb=XlsxEngine.utils.book_new();XlsxEngine.utils.book_append_sheet(wb,ws,'Dokumenti');
     var filename=safe(title)+'.xlsx';
-    if(DesktopEngine&&DesktopEngine.saveBinary){
-      var bytes=XlsxEngine.write(wb,{bookType:'xlsx',type:'array',cellDates:true,compression:true});
-      DesktopEngine.saveBinary(bytes,filename,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    }else XlsxEngine.writeFile(wb,filename);
+    var bytes=XlsxEngine.write(wb,{bookType:'xlsx',type:'array',cellDates:true,compression:true});
+    if(DesktopEngine&&DesktopEngine.saveBinary&&global.__SG_DESKTOP_RUNTIME__)DesktopEngine.saveBinary(bytes,filename,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    else downloadBlob(new global.Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),filename);
   }
   async function pdf(openForPrint) {
     if(!current)return;
@@ -169,9 +178,10 @@
       var blob=await response.blob(),url=global.URL.createObjectURL(blob),filename=safe(typeLabel(current.docType)+'_'+current.documentNo)+'.pdf';
       if(openForPrint){
         var preview=global.open(url,'_blank','noopener');
-        if(!preview){var fallback=document.createElement('a');fallback.href=url;fallback.download=filename;fallback.click();}
-      }else{var a=document.createElement('a');a.href=url;a.download=filename;a.click();}
-      global.setTimeout(function(){global.URL.revokeObjectURL(url);},120000);return;
+        if(!preview){global.URL.revokeObjectURL(url);downloadBlob(blob,filename);return;}
+        global.setTimeout(function(){global.URL.revokeObjectURL(url);},120000);return;
+      }
+      global.URL.revokeObjectURL(url);downloadBlob(blob,filename);return;
     }
     var message='PDF nuk u krijua nga serveri.';try{message=(await response.json()).message||message;}catch(_ignore){}throw new Error(message);
   }
