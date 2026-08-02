@@ -25,6 +25,26 @@
   var fidelityMode = query.get('sgdocMode') === 'fidelity' && documentId;
   var requestedAction = query.get('sgdocAction') || '';
   var current = null;
+  var pendingStyleId = 'sg96-fidelity-pending-style';
+
+  /* A direct document previously painted the dashboard while the cloud
+     bootstrap finished, then replaced it with the A4 page.  Keep only the
+     document transition visible: the user sees a clean short load, never a
+     dashboard flash or a recursive refresh. */
+  function revealFidelityDocument() {
+    try { document.documentElement.classList.remove('sg96-fidelity-pending'); } catch (_ignore) {}
+    var style = document.getElementById(pendingStyleId);
+    if (style) style.remove();
+  }
+  if (fidelityMode) {
+    try {
+      document.documentElement.classList.add('sg96-fidelity-pending');
+      var pendingStyle = document.createElement('style');
+      pendingStyle.id = pendingStyleId;
+      pendingStyle.textContent = 'html.sg96-fidelity-pending body{visibility:hidden!important}';
+      (document.head || document.documentElement).appendChild(pendingStyle);
+    } catch (_ignore2) {}
+  }
 
   function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function num(value) { var n=Number(value||0); return Number.isFinite(n)?n:0; }
@@ -269,7 +289,7 @@
    * authentication bootstrap to crash.  Waiting for load keeps every export
    * engine available before switching to the clean document view.
    */
-  function startFidelityDocument(){boot().catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';});}
+  function startFidelityDocument(){boot().then(function(){revealFidelityDocument();}).catch(function(error){document.body.innerHTML='<div style="padding:25px;font-family:Arial">Dokumenti nuk u ngarkua: '+esc(error.message||error)+'</div>';revealFidelityDocument();});}
   function startAfterBootstrap(){
     /* Auth/bootstrap also uses the load event.  Let it finish its async DOM
        setup before rendering the standalone document, otherwise it attempts
