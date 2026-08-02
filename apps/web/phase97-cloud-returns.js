@@ -80,7 +80,7 @@
     modal.className = 'modal-overlay';
     modal.innerHTML = '<div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="sg97-return-title" style="max-width:950px">'
       +'<div class="modal-header"><h3 id="sg97-return-title">Kthim te Furnitori · '+esc(documentNo(source))+'</h3><button type="button" class="modal-close" aria-label="Mbyll" onclick="App.sg97CloseSupplierReturn()">×</button></div>'
-      +'<div class="modal-content"><p>Zgjidhni vetëm sasinë që kthehet. Serveri kontrollon sasinë e mbetur dhe poston automatikisht lëvizjen e kundërt të stokut.</p>'
+      +'<div class="modal-content">'
       +'<div class="table-wrap"><table><thead><tr><th>Artikulli</th><th>Njësia</th><th>Në dispozicion</th><th>Dhuratë në dispozicion</th><th>Kthehet</th><th>Dhuratë</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
       +'<p class="muted">Pranimi: '+esc(documentNo(source))+' · Data: '+esc(date(source.documentDate || source.date))+'</p></div>'
       +'<div class="modal-footer"><button type="button" class="btn btn-outline" onclick="App.sg97CloseSupplierReturn()">Anullo</button><button type="button" class="btn btn-red" onclick="App.sg97SubmitSupplierReturn()">↩ Posto kthimin</button></div></div>';
@@ -181,8 +181,8 @@
       var docStatus = status(doc);
       var financial = doc.docType === 'SUPPLIER_RETURN';
       var returnKind = financial
-        ? '<span class="status confirmed">FINANCIAR · STOK + DETYRIM</span>'
-        : '<span class="status draft">NGA PRANIMI · VETËM STOK</span>';
+        ? '<span class="status confirmed">FINANCIAR</span>'
+        : '<span class="status draft">NGA PRANIMI</span>';
       var actions = '<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97OpenSupplierReturn(\''+esc(doc.id)+'\')">Hap</button>'
         +'<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97ReturnAction(\''+esc(doc.id)+'\',\'print\')">Print</button>'
         +'<button type="button" class="btn btn-outline btn-sm" onclick="App.sg97ReturnAction(\''+esc(doc.id)+'\',\'pdf\')">PDF</button>'
@@ -194,7 +194,7 @@
     if (!content) return;
     var title = document.getElementById('page-title');
     if (title) title.textContent = 'Kthime te Furnitori';
-    content.innerHTML = '<div class="card"><div class="card-title"><div><h3>Kthime te Furnitori</h3><p class="muted">Kthim nga faturë ul stokun dhe detyrimin. Kthimi nga pranimi prek vetëm stokun.</p></div><div class="card-title-actions"><button type="button" class="btn btn-primary btn-sm" onclick="App.sg97NewFinancialSupplierReturn()">+ Kthim nga Fatura</button></div></div><div class="table-wrap"><table><thead><tr><th>Nr. dokumenti</th><th>Lloji</th><th>Data</th><th>Furnitori</th><th>Totali</th><th>Statusi</th><th>Veprime</th></tr></thead><tbody>'+ (body || '<tr><td colspan="7" class="muted">Nuk ka kthime të regjistruara.</td></tr>') +'</tbody></table></div></div>';
+    content.innerHTML = '<div class="card"><div class="card-title"><div><h3>Kthime te Furnitori</h3></div><div class="card-title-actions"><button type="button" class="btn btn-primary btn-sm" onclick="App.sg97NewFinancialSupplierReturn()">+ Kthim nga Fatura</button></div></div><div class="table-wrap"><table><thead><tr><th>Nr. dokumenti</th><th>Lloji</th><th>Data</th><th>Furnitori</th><th>Totali</th><th>Statusi</th><th>Veprime</th></tr></thead><tbody>'+ (body || '<tr><td colspan="7" class="muted">Nuk ka kthime të regjistruara.</td></tr>') +'</tbody></table></div></div>';
     } catch (error) {
       App.toast(error.message || String(error), 'error');
     } finally {
