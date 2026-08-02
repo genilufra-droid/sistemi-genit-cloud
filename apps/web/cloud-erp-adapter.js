@@ -22,6 +22,7 @@
   var currentUser = null;
   var access = { companyIds: [], warehouseIds: [] };
   var bootstrapData = null;
+  var refreshInFlight = null;
   var original = {
     bootstrap: Auth.bootstrap,
     refreshAll: App.refreshAll,
@@ -311,6 +312,23 @@
     access.companyIds = (bootstrapData.access && bootstrapData.access.companyIds) || bootstrapData.companyIds || [];
     access.warehouseIds = (bootstrapData.access && bootstrapData.access.warehouseIds) || bootstrapData.warehouseIds || [];
     return bootstrapData;
+  }
+
+  // A cloud refresh is data synchronization, not navigation.  Several views
+  // can request it while they are opening; share that request so the UI is not
+  // repeatedly painted with the same data and never re-enter the active view.
+  function refreshCloudData() {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async function () {
+      try {
+        await loadBootstrap();
+        applyBootstrapToApp();
+        return bootstrapData;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+    return refreshInFlight;
   }
 
   async function startApplication() {
@@ -627,7 +645,16 @@
   global.CloudERP={
     apiUrl:API_URL, required:REQUIRED, request:request, bootstrap:bootstrap, retry:function(){bootstrap();},
     getUser:function(){return currentUser;}, getAccess:function(){return access;}, getBootstrap:function(){return bootstrapData;},
-    refresh:async function(){await loadBootstrap();applyBootstrapToApp();if(App.currentView)App.navigate(App.currentView);},
-    selectCompany:async function(id){if((access.companyIds||[]).indexOf(id)<0)throw new Error('Kompania nuk është në aksesin tuaj.');storageSet(ACTIVE_COMPANY_KEY,id);await this.refresh();}
+    // Refresh must only synchronize data. Re-rendering the active view here
+    // creates a recursive loop when a view itself calls CloudERP.refresh().
+    // Each workflow already chooses its destination after a successful write.
+    refresh:async function(){return refreshCloudData();},
+    selectCompany:async function(id){
+      if((access.companyIds||[]).indexOf(id)<0)throw new Error('Kompania nuk është në aksesin tuaj.');
+      storageSet(ACTIVE_COMPANY_KEY,id);
+      var activeView=App.currentView;
+      await this.refresh();
+      if(activeView&&typeof App.navigate==='function')App.navigate(activeView);
+    }
   };
 })(window);
