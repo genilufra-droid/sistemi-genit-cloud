@@ -37,11 +37,21 @@ function pdfResponse(res, filename) {
 function invoicePdf(doc, source) {
   const x = 34, width = 527, inner = width - 2; let y = 30;
   doc.font('Helvetica').fontSize(18).text('FATURË', x, y, { width, align: 'center' }); y += 27;
-  const company = `Shitësi: ${text(source.company_name)}\nAdresa: ${text(source.company_address)}\nNumri Unik i Identifikimit: ${text(source.company_nipt)}`;
+  /* Purchase invoices are received from the supplier.  The printable form
+     must therefore invert the visual seller/buyer roles, just like the
+     direct A4 document renderer. */
+  const isPurchase = /^PURCHASE/.test(String(source.doc_type || ''));
+  const seller = isPurchase
+    ? { name: source.partner_name, address: source.partner_address, nipt: source.partner_nipt }
+    : { name: source.company_name, address: source.company_address, nipt: source.company_nipt };
+  const buyer = isPurchase
+    ? { name: source.company_name, address: source.company_address, nipt: source.company_nipt }
+    : { name: source.partner_name, address: source.partner_address, nipt: source.partner_nipt };
+  const company = `Shitësi: ${text(seller.name)}\nAdresa: ${text(seller.address)}\nNumri Unik i Identifikimit: ${text(seller.nipt)}`;
   cell(doc, company, x, y, width, 56, { size: 8 }); y += 63;
   const issued = `Data e lëshimit: ${date(source.document_date)}\nNumri i faturës: ${text(source.document_no)}\nStatusi: ${text(source.status)}\nReferenca: ${text(source.reference_no || source.source_document_no)}`;
   cell(doc, issued, x, y, width, 64, { size: 8 }); y += 71;
-  const partner = `Blerësi: ${text(source.partner_name)}\nAdresa: ${text(source.partner_address)}\nNumri Unik i Identifikimit: ${text(source.partner_nipt)}`;
+  const partner = `Blerësi: ${text(buyer.name)}\nAdresa: ${text(buyer.address)}\nNumri Unik i Identifikimit: ${text(buyer.nipt)}`;
   cell(doc, partner, x, y, width, 54, { size: 8 }); y += 61;
   const columns = [24, 128, 43, 36, 55, 34, 42, 52, 50, 63];
   const headers = ['Nr.', 'Përshkrimi i mallit ose shërbimit', 'Njësia', 'Sasia', 'Çmimi për njësi pa TVSH', 'Zbritje %', 'Norma e TVSH', 'Vlera pa TVSH', 'TVSH', 'Vlera Totale'];
