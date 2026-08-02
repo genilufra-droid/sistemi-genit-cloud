@@ -164,8 +164,15 @@
       this.toast(error.message || String(error), 'error');
     }
   };
+  var unifiedPurchaseReturnView = null;
   function bindPurchaseReturnView() {
-    App.view_purchaseReturns = async function () {
+    unifiedPurchaseReturnView = async function () {
+    // CloudERP.refresh() normally navigates back to App.currentView. The
+    // legacy return view calls it without clearing that value, which starts
+    // an endless view → refresh → view loop and makes this screen flash.
+    if (App._sg97PurchaseReturnsRendering) return;
+    App._sg97PurchaseReturnsRendering = true;
+    try {
     await refreshDataWithoutNavigation();
     var rows = (this.data.purchaseReturns || []).concat(this.data.supplierReturns || []).slice().sort(function (a, b) {
       return String(b.documentDate || b.date || b.createdAt || '').localeCompare(String(a.documentDate || a.date || a.createdAt || ''));
@@ -188,17 +195,35 @@
     var title = document.getElementById('page-title');
     if (title) title.textContent = 'Kthime te Furnitori';
     content.innerHTML = '<div class="card"><div class="card-title"><div><h3>Kthime te Furnitori</h3><p class="muted">Kthim nga faturë ul stokun dhe detyrimin. Kthimi nga pranimi prek vetëm stokun.</p></div><div class="card-title-actions"><button type="button" class="btn btn-primary btn-sm" onclick="App.sg97NewFinancialSupplierReturn()">+ Kthim nga Fatura</button></div></div><div class="table-wrap"><table><thead><tr><th>Nr. dokumenti</th><th>Lloji</th><th>Data</th><th>Furnitori</th><th>Totali</th><th>Statusi</th><th>Veprime</th></tr></thead><tbody>'+ (body || '<tr><td colspan="7" class="muted">Nuk ka kthime të regjistruara.</td></tr>') +'</tbody></table></div></div>';
+    } catch (error) {
+      App.toast(error.message || String(error), 'error');
+    } finally {
+      App._sg97PurchaseReturnsRendering = false;
+    }
     };
+    App.view_purchaseReturns = unifiedPurchaseReturnView;
   }
-  bindPurchaseReturnView();
-  // The legacy financial-return script rebinds this view on `window.load`.
-  // Registering this listener after it makes the unified cloud workflow final.
-  function bindAfterLegacyViews() { bindPurchaseReturnView(); }
-  if (document.readyState === 'loading') {
-    global.addEventListener('load', function () { global.setTimeout(bindAfterLegacyViews, 0); }, { once: true });
-  } else {
-    global.setTimeout(bindAfterLegacyViews, 0);
+  function sealPurchaseReturnView() {
+    bindPurchaseReturnView();
+    // phase98 is a legacy block packed in index.html. It runs once more
+    // after window.load and used to replace this safe version. Keep its
+    // assignment from re-introducing the recursive refresh loop.
+    try {
+      Object.defineProperty(App, 'view_purchaseReturns', {
+        configurable: false,
+        enumerable: true,
+        get: function () { return unifiedPurchaseReturnView; },
+        set: function (next) {
+          if (next !== unifiedPurchaseReturnView) App._sg97IgnoredLegacyPurchaseReturnView = next;
+        }
+      });
+    } catch (_error) {
+      // A non-configurable host property is rare. The bound safe function is
+      // still used in that case, and this retry wins over the legacy timeout.
+      global.setTimeout(bindPurchaseReturnView, 1600);
+    }
   }
+  sealPurchaseReturnView();
 
   var previousList = typeof App._viewOdooList === 'function' ? App._viewOdooList : null;
   App._viewOdooList = async function (type) {
