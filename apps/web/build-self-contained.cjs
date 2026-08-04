@@ -60,6 +60,8 @@ const PATCHES = [
   'patch-phase99-professional-screen-copy.cjs',
   // Last: make payment allocation explicit to one invoice after every legacy view is ready.
   'patch-phase100-purchase-audit-fixes.cjs',
+  // Payroll is intentionally last so its navigation and export screen bind to the final shell.
+  'patch-payroll-module.cjs',
 ];
 const REQUIRED_MARKERS = [
   'SG_PHASE5_FINANCE_UI_START',
@@ -97,6 +99,7 @@ const REQUIRED_MARKERS = [
   'SG_PHASE97_CLOUD_RETURNS_START',
   'SG_PHASE99_PROFESSIONAL_SCREEN_COPY_START',
   'SG_PHASE100_PURCHASE_AUDIT_FIXES_START',
+  'SG_PAYROLL_MODULE_START',
   'SG_PHASE43_EXPORT_EXTENSIONS_UI_START',
   'SG_GLOBAL_CREATE_CTA_START',
 ];
