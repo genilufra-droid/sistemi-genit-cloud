@@ -264,6 +264,11 @@
     global.__SG_PHASE96_DOCUMENT_FIDELITY__=true;
     App.sg96OpenDocument=openDocument;
     App.sg96OpenDocumentAction=openDocumentAction;
+    var legacyBusiness=App.sg72OpenBusinessDocument;
+    App.sg72OpenBusinessDocument=function(id){
+      if(id){openDocument(id,'business_document');return;}
+      return typeof legacyBusiness==='function'?legacyBusiness.apply(this,arguments):null;
+    };
     var original=App.sg72OpenDocument;
     App.sg72OpenDocument=function(kind,id){if(id&&['business_document','finance_document','weight_ticket'].includes(kind)){openDocument(id,kind);return;}return typeof original==='function'?original.apply(this,arguments):null;};
     [
