@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: sistemi-genit-api
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci && npm run check --workspace apps/api
+    startCommand: npm start --workspace apps/api
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: GENIT_SERVICE_KIND
+        value: api
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sistemi-genit-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: "*"
+
+  - type: web
+    name: sistemi-genit-web
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci && npm run build --workspace apps/web
+    startCommand: npm start --workspace apps/web
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: GENIT_SERVICE_KIND
+        value: web
+      - key: GENIT_CLOUD_REQUIRED
+        value: "true"
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: sistemi-genit-api
+          envVarKey: RENDER_EXTERNAL_URL
+
+databases:
+  - name: sistemi-genit-db
+    databaseName: sistemi_genit
+    user: sistemi_genit_user
