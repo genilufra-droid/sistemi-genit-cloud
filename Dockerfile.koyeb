@@ -1,0 +1,29 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY apps/web/package*.json ./apps/web/
+RUN npm ci --prefix apps/web
+
+COPY apps/web ./apps/web
+ENV GENIT_CLOUD_REQUIRED=true
+ENV VITE_API_URL=__SELF__
+RUN npm run build --prefix apps/web
+
+COPY apps/api/package*.json ./apps/api/
+RUN npm ci --omit=dev --prefix apps/api
+
+COPY apps/api ./apps/api
+RUN mkdir -p apps/api/public \
+  && cp apps/web/dist/index.html apps/api/public/index.html
+
+FROM node:20-alpine AS runtime
+
+ENV NODE_ENV=production
+ENV PORT=3000
+WORKDIR /app
+
+COPY --from=builder /app/apps/api ./apps/api
+
+EXPOSE 3000
+CMD ["node", "apps/api/src/koyeb-fullstack-launcher.js"]
