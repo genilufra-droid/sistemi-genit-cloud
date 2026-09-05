@@ -2,7 +2,7 @@ services:
   - type: web
     name: sistemi-genit-api
     runtime: node
-    plan: starter
+    plan: free
     branch: main
     buildCommand: npm ci && npm run check --workspace apps/api
     startCommand: npm start --workspace apps/api
@@ -27,7 +27,7 @@ services:
   - type: web
     name: sistemi-genit-web
     runtime: node
-    plan: starter
+    plan: free
     branch: main
     buildCommand: npm ci && npm run build --workspace apps/web
     startCommand: npm start --workspace apps/web
@@ -50,5 +50,6 @@ services:
 
 databases:
   - name: sistemi-genit-db
+    plan: free
     databaseName: sistemi_genit
     user: sistemi_genit_user
