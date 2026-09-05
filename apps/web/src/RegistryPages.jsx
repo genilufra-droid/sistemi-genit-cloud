@@ -145,6 +145,15 @@ function productToForm(row) {
   };
 }
 
+const PRODUCT_TABS = [
+  ['general', 'Informacion i Përgjithshëm'],
+  ['inventory', 'Stoku'],
+  ['purchase', 'Blerje'],
+  ['sales', 'Shitje'],
+  ['accounting', 'Kontabilitet'],
+  ['traceability', 'Gjurmueshmëri'],
+];
+
 export function ProductsRegistryPage() {
   const [rows, setRows] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -154,6 +163,7 @@ export function ProductsRegistryPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(blankProduct());
+  const [productTab, setProductTab] = useState('general');
 
   const load = async () => {
     try {
@@ -183,12 +193,14 @@ export function ProductsRegistryPage() {
   const startNew = () => {
     setEditingId(null);
     setForm(blankProduct(companies[0]?.id || ''));
+    setProductTab('general');
     setOpen(true);
   };
 
   const startEdit = (row) => {
     setEditingId(row.id);
     setForm(productToForm(row));
+    setProductTab('general');
     setOpen(true);
   };
 
@@ -251,24 +263,154 @@ export function ProductsRegistryPage() {
         <div className="search-box registry-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Kërko kod, barkod, emër…" /></div>
         <DataTable rows={filteredRows} columns={columns} onOpen={startEdit} />
       </section>
+
       {open && (
-        <Modal title={editingId ? 'Edito artikullin' : 'Artikull i ri'} close={close}>
-          <form className="form-grid" onSubmit={submit}>
-            <SelectCompany companies={companies} value={form.companyId} onChange={(companyId) => setForm({ ...form, companyId, categoryId: '' })} disabled={Boolean(editingId)} />
-            <label><span>Kategoria</span><select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}><option value="">Pa kategori</option>{categories.filter((category) => category.company_id === form.companyId && category.active !== false).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-            {[
-              ['code','Kodi'],['barcode','Barkodi'],['name','Emri'],['baseUnit','Njësia bazë'],['packUnit','Njësia koli'],['palletUnit','Njësia paletë'],
-              ['packCoefficient','Copë për koli'],['palletCoefficient','Copë për paletë'],['purchasePrice','Çmimi blerje'],['salePrice','Çmimi shitje'],['vatRate','TVSH %'],
-            ].map(([key, label]) => (
-              <label key={key} className={key === 'name' ? 'wide' : ''}>
-                <span>{label}</span>
-                <input type={['packCoefficient','palletCoefficient','purchasePrice','salePrice','vatRate'].includes(key) ? 'number' : 'text'} step="any" value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} required={['code','name'].includes(key)} />
+        <div className="product-editor-backdrop" onMouseDown={close}>
+          <form className="product-editor" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="product-editor-toolbar">
+              <div className="product-editor-title">
+                <strong>Artikujt / {editingId ? 'Edito' : 'I Ri'}</strong>
+                <span>{editingId ? 'Kartela e artikullit' : 'Krijo artikull të ri'}</span>
+              </div>
+              <div className="product-editor-actions">
+                <button className="primary" type="submit">Ruaj</button>
+                <button className="secondary" type="button" onClick={close}>Anulo</button>
+                <button className="icon-close" type="button" onClick={close} aria-label="Mbyll"><X size={20} /></button>
+              </div>
+            </div>
+
+            <div className="product-smartbar">
+              <label className="product-active-toggle">
+                <span>Aktiv</span>
+                <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
               </label>
-            ))}
-            <label className="check wide"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /> Artikulli aktiv</label>
-            <FormActions close={close} />
+              <div className="product-smartbuttons" aria-label="Përmbledhje artikulli">
+                <div><strong>—</strong><span>Në Stok</span></div>
+                <div><strong>—</strong><span>Lëvizje</span></div>
+                <div><strong>—</strong><span>Blerje</span></div>
+                <div><strong>—</strong><span>Shitje</span></div>
+              </div>
+            </div>
+
+            <div className="product-sheet">
+              <div className="product-name-row">
+                <label className="product-name-field">
+                  <span>Emri i Artikullit *</span>
+                  <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="p.sh. Rugove 0.5L" required />
+                </label>
+                <div className="product-photo-placeholder" aria-label="Foto produkti">
+                  <span>📷</span>
+                  <small>Foto e Produktit</small>
+                </div>
+              </div>
+
+              <div className="product-flags">
+                <label><input type="checkbox" checked readOnly /> Mund të Blihet</label>
+                <label><input type="checkbox" checked readOnly /> Mund të Shitet</label>
+                <label><input type="checkbox" checked readOnly /> Produkt Stoku</label>
+              </div>
+
+              <div className="product-tabs" role="tablist">
+                {PRODUCT_TABS.map(([key, label]) => (
+                  <button key={key} type="button" className={productTab === key ? 'active' : ''} onClick={() => setProductTab(key)}>{label}</button>
+                ))}
+              </div>
+
+              {productTab === 'general' && (
+                <div className="product-tab-panel two-columns">
+                  <section>
+                    <h4>Informacioni bazë</h4>
+                    <SelectCompany companies={companies} value={form.companyId} onChange={(companyId) => setForm({ ...form, companyId, categoryId: '' })} disabled={Boolean(editingId)} />
+                    <label><span>Kodi *</span><input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="p.sh. RG-05" required /></label>
+                    <label><span>Barkodi</span><input value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="p.sh. 123456789012" /></label>
+                    <label><span>Kategoria</span><select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}><option value="">Pa kategori</option>{categories.filter((category) => category.company_id === form.companyId && category.active !== false).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+                    <label><span>Njësia Bazë</span><input value={form.baseUnit} onChange={(event) => setForm({ ...form, baseUnit: event.target.value })} /></label>
+                  </section>
+                  <section>
+                    <h4>Çmime dhe taksa</h4>
+                    <label><span>Çmimi i Blerjes</span><input type="number" step="any" value={form.purchasePrice} onChange={(event) => setForm({ ...form, purchasePrice: event.target.value })} /></label>
+                    <label><span>Çmimi i Shitjes</span><input type="number" step="any" value={form.salePrice} onChange={(event) => setForm({ ...form, salePrice: event.target.value })} /></label>
+                    <label><span>TVSH %</span><input type="number" step="any" value={form.vatRate} onChange={(event) => setForm({ ...form, vatRate: event.target.value })} /></label>
+                    <div className="product-readonly-line"><span>Kosto Mesatare</span><strong>—</strong></div>
+                  </section>
+                </div>
+              )}
+
+              {productTab === 'inventory' && (
+                <div className="product-tab-panel two-columns">
+                  <section>
+                    <h4>Njësitë dhe paketimi</h4>
+                    <label><span>Njësia Bazë</span><input value={form.baseUnit} onChange={(event) => setForm({ ...form, baseUnit: event.target.value })} /></label>
+                    <label><span>Njësia Koli</span><input value={form.packUnit} onChange={(event) => setForm({ ...form, packUnit: event.target.value })} /></label>
+                    <label><span>Copë për Koli</span><input type="number" step="any" value={form.packCoefficient} onChange={(event) => setForm({ ...form, packCoefficient: event.target.value })} /></label>
+                  </section>
+                  <section>
+                    <h4>Paleta</h4>
+                    <label><span>Njësia Paletë</span><input value={form.palletUnit} onChange={(event) => setForm({ ...form, palletUnit: event.target.value })} /></label>
+                    <label><span>Copë për Paletë</span><input type="number" step="any" value={form.palletCoefficient} onChange={(event) => setForm({ ...form, palletCoefficient: event.target.value })} /></label>
+                    <div className="product-readonly-line"><span>Stoku Aktual</span><strong>—</strong></div>
+                  </section>
+                </div>
+              )}
+
+              {productTab === 'purchase' && (
+                <div className="product-tab-panel two-columns">
+                  <section>
+                    <h4>Blerje</h4>
+                    <label><span>Çmimi i Blerjes</span><input type="number" step="any" value={form.purchasePrice} onChange={(event) => setForm({ ...form, purchasePrice: event.target.value })} /></label>
+                    <label><span>Njësia e Blerjes</span><input value={form.packUnit} onChange={(event) => setForm({ ...form, packUnit: event.target.value })} /></label>
+                  </section>
+                  <section>
+                    <h4>Konvertimi</h4>
+                    <label><span>Koeficienti Koli</span><input type="number" step="any" value={form.packCoefficient} onChange={(event) => setForm({ ...form, packCoefficient: event.target.value })} /></label>
+                  </section>
+                </div>
+              )}
+
+              {productTab === 'sales' && (
+                <div className="product-tab-panel two-columns">
+                  <section>
+                    <h4>Shitje</h4>
+                    <label><span>Çmimi i Shitjes</span><input type="number" step="any" value={form.salePrice} onChange={(event) => setForm({ ...form, salePrice: event.target.value })} /></label>
+                    <label><span>Njësia e Shitjes</span><input value={form.baseUnit} onChange={(event) => setForm({ ...form, baseUnit: event.target.value })} /></label>
+                  </section>
+                  <section>
+                    <h4>Tatimi</h4>
+                    <label><span>TVSH %</span><input type="number" step="any" value={form.vatRate} onChange={(event) => setForm({ ...form, vatRate: event.target.value })} /></label>
+                  </section>
+                </div>
+              )}
+
+              {productTab === 'accounting' && (
+                <div className="product-tab-panel two-columns">
+                  <section>
+                    <h4>Kontabilitet</h4>
+                    <label><span>TVSH %</span><input type="number" step="any" value={form.vatRate} onChange={(event) => setForm({ ...form, vatRate: event.target.value })} /></label>
+                  </section>
+                  <section>
+                    <h4>Statusi</h4>
+                    <label className="inline-check"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /> Artikulli aktiv</label>
+                  </section>
+                </div>
+              )}
+
+              {productTab === 'traceability' && (
+                <div className="product-tab-panel two-columns">
+                  <section>
+                    <h4>Identifikimi</h4>
+                    <label><span>Kodi i Artikullit</span><input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /></label>
+                    <label><span>Barkodi</span><input value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} /></label>
+                  </section>
+                  <section>
+                    <h4>Njësitë e gjurmimit</h4>
+                    <label><span>Njësia bazë</span><input value={form.baseUnit} onChange={(event) => setForm({ ...form, baseUnit: event.target.value })} /></label>
+                    <label><span>Njësia paletë</span><input value={form.palletUnit} onChange={(event) => setForm({ ...form, palletUnit: event.target.value })} /></label>
+                  </section>
+                </div>
+              )}
+            </div>
           </form>
-        </Modal>
+        </div>
       )}
     </>
   );
