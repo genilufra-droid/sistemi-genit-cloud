@@ -71,13 +71,20 @@
     var nameInput = document.getElementById('pr-name');
     if (!nameInput) return false;
     var modal = (nameInput.closest && (nameInput.closest('.modal') || nameInput.closest('.modal-content'))) || document.getElementById('modal-overlay');
-    if (!modal || modal.dataset.sgProductOdoo === '1') return true;
-    modal.dataset.sgProductOdoo = '1';
-    modal.classList.add('sg-product-odoo-modal');
+    if (!modal) return false;
+
+    /* Legacy traceability code can repaint the modal after editProduct returns.
+       The overlay survives that repaint, so a stale data flag must never block re-enhancement. */
+    var liveWorkspace = modal.querySelector('.sg-product-odoo-workspace');
+    if (modal.dataset.sgProductOdoo === '1' && liveWorkspace && liveWorkspace.contains(nameInput)) return true;
+    if (modal.dataset.sgProductOdoo === '1' && !liveWorkspace) delete modal.dataset.sgProductOdoo;
 
     var body = (nameInput.closest && nameInput.closest('.modal-body')) || nameInput.closest('.modal-content') || modal;
     var sourceGrid = nameInput.closest && nameInput.closest('.form-grid');
-    if (!sourceGrid || !body) return true;
+    if (!sourceGrid || !body) return false;
+
+    modal.dataset.sgProductOdoo = '1';
+    modal.classList.add('sg-product-odoo-modal');
 
     var titleNode = modal.querySelector('.modal-header h2, .modal-header h3, .modal-title, h2, h3');
     if (titleNode) titleNode.textContent = existing ? 'Artikulli / Edito' : 'Artikujt / I Ri';
@@ -151,6 +158,23 @@
     return true;
   }
 
+  var lastExisting = null;
+  var repairQueued = false;
+  function repairIfNeeded() {
+    repairQueued = false;
+    var nameInput = document.getElementById('pr-name');
+    if (!nameInput) return;
+    var modal = (nameInput.closest && (nameInput.closest('.modal') || nameInput.closest('.modal-content'))) || document.getElementById('modal-overlay');
+    if (!modal) return;
+    var workspace = modal.querySelector('.sg-product-odoo-workspace');
+    if (!workspace || !workspace.contains(nameInput)) enhanceProductModal(lastExisting);
+  }
+  function queueRepair() {
+    if (repairQueued) return;
+    repairQueued = true;
+    global.setTimeout(repairIfNeeded, 0);
+  }
+
   function install() {
     if (global.__SG_PRODUCT_ODOO_EDITOR__) return true;
     var App = resolveApp();
@@ -158,15 +182,34 @@
     global.__SG_PRODUCT_ODOO_EDITOR__ = true;
     var originalEditProduct = App.editProduct;
     App.editProduct = function (existing) {
+      lastExisting = existing || null;
       var result = originalEditProduct.apply(this, arguments);
       var apply = function (value) {
-        global.setTimeout(function () { enhanceProductModal(existing); }, 0);
+        /* Apply immediately and again after legacy async decorators finish. */
+        [0, 40, 120, 300, 700].forEach(function (delay) {
+          global.setTimeout(function () { enhanceProductModal(existing); }, delay);
+        });
         return value;
       };
       if (result && typeof result.then === 'function') return result.then(apply, function (error) { throw error; });
       return apply(result);
     };
-    global.SGProductOdooEditor = { enhance: enhanceProductModal };
+
+    /* Keep the Odoo shell authoritative while the product modal is open.
+       This catches late DOM replacements from traceability/searchable-combo patches. */
+    if (global.MutationObserver && document.documentElement) {
+      var observer = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i += 1) {
+          if (mutations[i].type === 'childList' && (mutations[i].addedNodes.length || mutations[i].removedNodes.length)) {
+            queueRepair();
+            break;
+          }
+        }
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
+    global.SGProductOdooEditor = { enhance: enhanceProductModal, repair: repairIfNeeded };
     return true;
   }
 
